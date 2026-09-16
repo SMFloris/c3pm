@@ -401,6 +401,8 @@ fn void bundle_targets_and_flake_outputs_are_generated_test() @test
 	test::@check(shell.contains(`"server" = c3pm.c3ProjectBuilder`));
 	test::@check(shell.contains(`target = "server"`));
 	test::@check(!shell.contains(`"library" = c3pm.c3ProjectBuilder`));
+	test::@check(C3PM_LIB_NIX.contains(
+		`cp -R --no-preserve=mode,ownership "$src"/. source/`));
 	String project_nix = generate_project_nix(tmem, &project);
 	test::@check(project_nix.contains(`version = "1.2.3"`));
 }

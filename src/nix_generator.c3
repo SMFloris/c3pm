@@ -315,6 +315,14 @@ let
       inherit src;
       nativeBuildInputs = [ pkgs.c3c ] ++ inputs.nativeBuildInputs;
       buildInputs = inputs.buildInputs;
+      unpackPhase = ''
+        runHook preUnpack
+        mkdir source
+        cp -R --no-preserve=mode,ownership "$src"/. source/
+        chmod -R u+w source
+        cd source
+        runHook postUnpack
+      '';
       buildPhase = ''
         runHook preBuild
         ln -s ${libs} lib
