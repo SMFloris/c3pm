@@ -325,6 +325,9 @@ let
       '';
       buildPhase = ''
         runHook preBuild
+        export HOME="$TMPDIR/c3pm-home"
+        export XDG_CACHE_HOME="$HOME/.cache"
+        mkdir -p "$XDG_CACHE_HOME"
         ln -s ${libs} lib
         c3c build ${lib.escapeShellArg target} --output-dir .c3pm-build-out
         runHook postBuild
