@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-linux-x86_64:
+    name: Build Linux x86_64 release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    env:
+      C3_VERSION: "0.8.3"
+      NIX_PORTABLE_VERSION: "v012"
+      C3PM_NIX_PORTABLE: ${{ github.workspace }}/.tools/nix-portable
+      NP_LOCATION: /tmp/c3pm-nix-portable
+      NP_GIT: /usr/bin/git
+      XDG_CACHE_HOME: /tmp/c3pm-nix-cache
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install C3 compiler
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/c3lang/c3c/releases/download/v${C3_VERSION}/c3-linux-static.tar.gz" \
+            --output "${RUNNER_TEMP}/c3-linux-static.tar.gz"
+          tar -xzf "${RUNNER_TEMP}/c3-linux-static.tar.gz" -C "${RUNNER_TEMP}"
+          echo "${RUNNER_TEMP}/c3" >> "${GITHUB_PATH}"
+
+      - name: Install nix-portable bootstrap
+        run: |
+          mkdir -p .tools
+          curl --fail --location --retry 3 \
+            "https://github.com/DavHau/nix-portable/releases/download/${NIX_PORTABLE_VERSION}/nix-portable-x86_64" \
+            --output .tools/nix-portable
+          chmod +x .tools/nix-portable
+
+      - name: Build and test c3pm
+        run: |
+          c3c --version
+          c3c build
+          c3c test
+
+      - name: Build portable executable
+        run: |
+          mkdir -p release
+          ./build/c3pm bundle c3pm --output release/c3pm-linux-x86_64
+          test -f release/c3pm-linux-x86_64
+          test ! -L release/c3pm-linux-x86_64
+          test -x release/c3pm-linux-x86_64
+
+      - name: Test released executable bootstrap
+        run: |
+          unset C3PM_NIX_PORTABLE
+          export NP_LOCATION="${RUNNER_TEMP}/released-c3pm"
+          release/c3pm-linux-x86_64 --version
+          cd examples/sqlite-example
+          ../../release/c3pm-linux-x86_64 install
+          ../../release/c3pm-linux-x86_64 shell -- c3c --version
+          ../../release/c3pm-linux-x86_64 bundle \
+            --output "${RUNNER_TEMP}/sqlite-example-portable"
+          test -f "${RUNNER_TEMP}/sqlite-example-portable"
+          test ! -L "${RUNNER_TEMP}/sqlite-example-portable"
+          test -x "${RUNNER_TEMP}/sqlite-example-portable"
+          cd "${RUNNER_TEMP}"
+          NP_LOCATION="${RUNNER_TEMP}/released-example" \
+            ./sqlite-example-portable list
+
+      - name: Create source archive and checksums
+        run: |
+          git archive \
+            --format=zip \
+            --prefix="c3pm-${GITHUB_REF_NAME}/" \
+            --output="release/c3pm-${GITHUB_REF_NAME}-source.zip" \
+            "${GITHUB_SHA}"
+          cd release
+          sha256sum \
+            c3pm-linux-x86_64 \
+            "c3pm-${GITHUB_REF_NAME}-source.zip" \
+            > SHA256SUMS
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            release/c3pm-linux-x86_64 \
+            "release/c3pm-${GITHUB_REF_NAME}-source.zip" \
+            release/SHA256SUMS \
+            --verify-tag \
+            --generate-notes \
+            --title "c3pm ${GITHUB_REF_NAME}"

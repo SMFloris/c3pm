@@ -1,0 +1,17 @@
+/build/
+/out/
+/dist/
+/release/
+/.tools/
+
+/lib/*.c3l
+!/lib/.gitkeep
+
+/.c3pm/*
+!/.c3pm/nix/
+/.c3pm/nix/*
+!/.c3pm/nix/flake.lock
+
+result
+result-*
+.DS_Store
