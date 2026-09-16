@@ -280,6 +280,19 @@ c3c test
 ./build/c3pm --help
 ```
 
+By default, a source build invokes `nix-portable`. CI systems or development
+machines with Nix installed can bypass the portability layer and use the native
+daemon-backed client:
+
+```sh
+C3PM_NIX=nix ./build/c3pm install
+C3PM_NIX=nix ./build/c3pm bundle
+```
+
+Set `C3PM_NIX_PORTABLE=/path/to/nix-portable` instead to select a particular
+nix-portable bootstrap executable. Released bundles discover and use their
+embedded Nix client automatically.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

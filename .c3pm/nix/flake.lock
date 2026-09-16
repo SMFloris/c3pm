@@ -151,6 +151,10 @@
     "root": {
       "inputs": {
         "nix-portable": "nix-portable",
+        "nix-portable-nix": [
+          "nix-portable",
+          "nix"
+        ],
         "nixpkgs": "nixpkgs_2"
       }
     }

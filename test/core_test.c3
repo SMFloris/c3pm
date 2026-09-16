@@ -394,8 +394,11 @@ fn void bundle_targets_and_flake_outputs_are_generated_test() @test
 	String flake = generate_flake_nix(tmem, &graph, &project);
 	String shell = generate_shell_nix(tmem, &graph, &project);
 	test::@check(flake.contains(`nix-portable.url = "github:DavHau/nix-portable"`));
+	test::@check(flake.contains(`nix-portable-nix.follows = "nix-portable/nix"`));
 	test::@check(flake.contains(`inputs.nix-portable.bundlers.${system}.zstd-fast`));
-	test::@check(flake.contains(`ln -s ${pkgs.nix}/bin/nix $out/bin/nix`));
+	test::@check(flake.contains(
+		`ln -s ${inputs.nix-portable-nix.packages.${system}.nix}/bin/nix $out/bin/nix`));
+	test::@check(!flake.contains(`ln -s ${pkgs.nix}/bin/nix $out/bin/nix`));
 	test::@check(flake.contains(`self.packages.${system}."server"`));
 	test::@check(!flake.contains(`self.packages.${system}."library"`));
 	test::@check(shell.contains(`"server" = c3pm.c3ProjectBuilder`));

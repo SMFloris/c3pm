@@ -153,7 +153,8 @@ fn String generate_flake_nix(Allocator allocator, Graph* graph, Metadata* projec
 		"{\n  inputs = {\n"
 		"    nixpkgs.url = \"github:NixOS/nixpkgs/nixpkgs-unstable\";\n"
 		"    nix-portable.url = \"github:DavHau/nix-portable\";\n"
-		"    nix-portable.inputs.defaultChannel.follows = \"nixpkgs\";\n\n");
+		"    nix-portable.inputs.defaultChannel.follows = \"nixpkgs\";\n"
+		"    nix-portable-nix.follows = \"nix-portable/nix\";\n\n");
 	foreach (position, index : sorted)
 	{
 		if (source_seen_before(graph, sorted, position)) continue;
@@ -189,7 +190,8 @@ fn String generate_flake_nix(Allocator allocator, Graph* graph, Metadata* projec
 		"                mkdir -p $out/bin\n"
 		"                ln -s ${nixpkgs.lib.getExe drv} $out/bin/${mainProgram}\n"
 		"                # nix-portable currently expects this beside a hardcoded bundled executable.\n"
-		"                ln -s ${pkgs.nix}/bin/nix $out/bin/nix\n"
+		"                # Reuse the exact Nix already embedded by nix-portable.\n"
+		"                ln -s ${inputs.nix-portable-nix.packages.${system}.nix}/bin/nix $out/bin/nix\n"
 		"                # Keep its first-run git dependency inside the embedded store closure.\n"
 		"                mkdir -p $out/share/c3pm-runtime\n"
 		"                ln -s ${pkgs.gitMinimal} $out/share/c3pm-runtime/git\n"

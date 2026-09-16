@@ -169,6 +169,10 @@
       "inputs": {
         "c3pm_src_smfloris_c3c_vendor_1b3a02ba": "c3pm_src_smfloris_c3c_vendor_1b3a02ba",
         "nix-portable": "nix-portable",
+        "nix-portable-nix": [
+          "nix-portable",
+          "nix"
+        ],
         "nixpkgs": "nixpkgs_2"
       }
     }

@@ -32,7 +32,11 @@ fn int? run_command(String[] args)
 	@pool()
 	{
 		PortableNixRunner portable;
-		if (try configured = env::tget_var("C3PM_NIX_PORTABLE"))
+		if (try configured = env::tget_var("C3PM_NIX"))
+		{
+			portable = portable_nix_runner(configured, true);
+		}
+		else if (try configured = env::tget_var("C3PM_NIX_PORTABLE"))
 		{
 			portable = portable_nix_runner(configured);
 		}
