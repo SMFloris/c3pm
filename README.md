@@ -152,10 +152,123 @@ The sole dependency lock database is `.c3pm/nix/flake.lock`. It pins nixpkgs,
 nix-portable, and every fetched C3 source. c3pm does not clone sources,
 calculate source hashes, or solve versions itself.
 
+## Native dependencies and Nix
+
+C3 and Nix metadata answer different questions. Standard C3 metadata tells the
+compiler which C3 libraries and linker names are required:
+
+```json
+{
+  "dependencies": ["sqlite3"],
+  "linked-libraries": ["sqlite3"]
+}
+```
+
+`vendor.c3pm.nix` tells Nix which packages must be present to build that code:
+
+```json
+{
+  "vendor": {
+    "c3pm": {
+      "nix": {
+        "nativeBuildInputs": ["pkg-config", "cmake"],
+        "buildInputs": ["sqlite", "openssl"],
+        "propagatedNativeBuildInputs": [],
+        "propagatedBuildInputs": []
+      }
+    }
+  }
+}
+```
+
+The four package classes have the following roles:
+
+- `nativeBuildInputs` contains tools executed while building, such as
+  `pkg-config`, CMake, code generators, or other command-line utilities.
+- `buildInputs` contains libraries and headers compiled or linked into the
+  target, such as SQLite, OpenSSL, zlib, or SDL.
+- `propagatedNativeBuildInputs` contains build tools that consumers of a
+  packaged library must also receive.
+- `propagatedBuildInputs` contains libraries that consumers must inherit when
+  they use a packaged library.
+
+Entries are nixpkgs attribute paths, not arbitrary Nix expressions. Both simple
+names and nested attributes are supported:
+
+```json
+{
+  "buildInputs": [
+    "openssl",
+    "xorg.libX11",
+    "llvmPackages.clang"
+  ]
+}
+```
+
+c3pm validates these attributes against the locked nixpkgs revision and emits
+references such as `pkgs.openssl` and `pkgs.xorg.libX11`. It gathers all four
+classes from the root project and every reachable C3 dependency, deduplicates
+them, and supplies the result to both the development shell and project
+builder.
+
+There is deliberately no automatic mapping from a C3 linker name to a nixpkgs
+package. For example, `"linked-libraries": ["sqlite3"]` tells C3 what to pass
+to the linker, while `"buildInputs": ["sqlite"]` tells Nix where the actual
+headers and library come from. Library authors should declare both pieces when
+they are needed.
+
+### Native packages outside nixpkgs
+
 Projects and library manifests can declare trusted package definitions through
-`vendor.c3pm.nix.imports`. Each import is a relative `.nix` path resolved from
-the declaring project or `.c3l` directory and evaluated with `pkgs.callPackage`.
-Absolute paths and paths containing `..` are rejected.
+`vendor.c3pm.nix.imports`:
+
+```json
+{
+  "vendor": {
+    "c3pm": {
+      "nix": {
+        "imports": ["./microui.nix"]
+      }
+    }
+  }
+}
+```
+
+Each import is a relative `.nix` path resolved from the declaring project or
+`.c3l` directory and evaluated with `pkgs.callPackage`. The resulting package
+is added to `buildInputs`. Absolute paths and paths containing `..` are
+rejected. Unlike generated dependency nodes, declared imports are trusted,
+executable Nix code.
+
+### From native dependencies to a portable bundle
+
+For an executable target, c3pm asks Nix to build a normal package whose primary
+program is `$out/bin/<target>`. Nix records every Nix-store path referenced by
+that finished package and determines its runtime closure. This includes needed
+shared libraries even when they arrived through transitive package references.
+
+```text
+C3 executable package
+        ↓
+Nix reference graph
+        ↓
+complete runtime closure
+        ↓
+nix-portable zstd-fast bundler
+        ↓
+single portable Linux executable
+```
+
+c3pm does not equate `buildInputs` with runtime dependencies, run `ldd`, copy
+`.so` files manually, or patch ELF paths. The pinned nix-portable bundler embeds
+the package and closure and provides the virtual `/nix/store` environment when
+the resulting file starts.
+
+The bundle is therefore self-contained and can run without system copies of
+SQLite, OpenSSL, Nix, or c3pm. It is not necessarily a statically linked ELF
+binary: dynamically linked libraries can remain part of the embedded Nix
+closure. “Portable” here means that the one output file carries and realizes
+everything the packaged program references.
 
 ## Building c3pm from source
 
