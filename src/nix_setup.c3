@@ -136,7 +136,7 @@ fn NixBackendConfig? load_nix_backend_config(Allocator allocator)
 	NixBackendConfig config = parse_nix_backend_config(allocator, contents)!;
 	if (!executable_file(config.executable))
 	{
-		io::printfn("Configured Nix executable is unavailable:\n  %s\n\nRun c3pm nix setup again.",
+		io::printfn("Configured Nix executable is unavailable:\n  %s\n\nSelect a backend again with `c3pm nix use`.",
 			config.executable);
 		return INVALID_NIX_CONFIG~;
 	}
@@ -195,58 +195,142 @@ fn void? download_nix_portable(String destination)
 	return;
 }
 
-fn int? run_nix_setup_command(String[] args)
+fn void print_missing_nix_backend()
 {
-	if (args.len == 3)
+	io::printn(
+		"No Nix backend is available.\n\n"
+		"Install Nix and ensure `nix` is on PATH, or use the managed portable backend:\n\n"
+		"  c3pm nix use portable\n\n"
+		"To inspect backend selection:\n\n"
+		"  c3pm nix status"
+	);
+}
+
+fn String nix_backend_version(String backend, String executable)
+{
+	PortableNixRunner runner = backend == "portable"
+		? portable_nix_runner(executable, false, false)
+		: portable_nix_runner(executable, true, false);
+	String[] command = runner.command(tmem, { "--version" });
+	String? detected = capture_nix_output(tmem, command, 4096);
+	if (catch detected) return "unavailable";
+	return detected.trim();
+}
+
+fn void print_nix_status(String backend, String executable, String source)
+{
+	io::printfn("Nix backend: %s\nExecutable:  %s\nVersion:     %s\nSource:      %s",
+		backend, executable, nix_backend_version(backend, executable), source);
+}
+
+fn int? run_nix_status_command()
+{
+	if (try executable = env::tget_var("C3PM_NIX") && executable.len)
 	{
-		if (try executable = find_executable(tmem, "nix"))
-		{
-			save_nix_backend_config({ .mode = "native", .executable = executable })!;
-			io::printfn("Found and configured Nix at %s", executable);
-			return 0;
-		}
-		io::printn(
-			"Nix was not found on PATH.\n\n"
-			"Install Nix and run this command again, or download and configure "
-			"nix-portable with:\n\n"
-			"  c3pm nix setup --portable"
-		);
-		return 1;
-	}
-	if (args.len == 4 && args[3] == "--portable")
-	{
-		String executable = xdg_portable_path(tmem)!;
-		download_nix_portable(executable)!;
-		save_nix_backend_config({ .mode = "portable", .executable = executable })!;
-		io::printfn("Configured nix-portable at %s", executable);
+		print_nix_status("system", executable, "C3PM_NIX");
 		return 0;
 	}
-	if (args.len == 5 && args[3] == "--path")
+	if (try executable = env::tget_var("C3PM_NIX_PORTABLE") && executable.len)
 	{
-		String executable = find_executable(tmem, args[4])!;
+		print_nix_status("portable", executable, "C3PM_NIX_PORTABLE");
+		return 0;
+	}
+
+	String config_path = xdg_config_path(tmem)!;
+	if (file::is_file(config_path))
+	{
+		NixBackendConfig? loaded = load_nix_backend_config(tmem);
+		if (catch loaded)
+		{
+			io::printfn("Invalid c3pm Nix configuration:\n  %s\n\nSelect a backend again.",
+				config_path);
+			return 1;
+		}
+		NixBackendConfig config = loaded;
+		print_nix_status(config.mode == "portable" ? "portable" : "system",
+			config.executable, config_path);
+		return 0;
+	}
+	if (try executable = find_executable(tmem, "nix"))
+	{
+		print_nix_status("system", executable, "PATH (automatic)");
+		return 0;
+	}
+	print_missing_nix_backend();
+	return 1;
+}
+
+fn int? use_system_nix()
+{
+	if (try executable = find_executable(tmem, "nix"))
+	{
 		save_nix_backend_config({ .mode = "native", .executable = executable })!;
-		io::printfn("Configured Nix at %s", executable);
+		io::printfn("Using system Nix at %s", executable);
 		return 0;
 	}
 	io::printn(
-		"Usage:\n"
-		"  c3pm nix setup\n"
-		"  c3pm nix setup --portable\n"
-		"  c3pm nix setup --path /path/to/nix"
+		"Nix was not found on PATH.\n\n"
+		"Install Nix and try again, or use:\n\n"
+		"  c3pm nix use portable"
 	);
-	return INVALID_NIX_CONFIG~;
+	return 1;
+}
+
+fn int? use_portable_nix()
+{
+	String executable = xdg_portable_path(tmem)!;
+	if (!executable_file(executable)) download_nix_portable(executable)!;
+	save_nix_backend_config({ .mode = "portable", .executable = executable })!;
+	io::printfn("Using managed nix-portable at %s", executable);
+	return 0;
+}
+
+fn int? use_nix_path(String requested)
+{
+	String? found = find_executable(tmem, requested);
+	if (catch found)
+	{
+		io::printfn("Nix executable was not found or is not executable:\n  %s", requested);
+		return 1;
+	}
+	String executable = found;
+	save_nix_backend_config({ .mode = "native", .executable = executable })!;
+	io::printfn("Using Nix at %s", executable);
+	return 0;
+}
+
+fn int? reset_nix_backend()
+{
+	String config_path = xdg_config_path(tmem)!;
+	if (file::is_file(config_path)) (void)file::delete(config_path);
+	io::printn("Cleared the saved Nix backend. Nix will be discovered automatically.");
+	return 0;
+}
+
+fn void print_nix_help()
+{
+	io::printn(
+		"Usage:\n"
+		"  c3pm nix status\n"
+		"  c3pm nix use system\n"
+		"  c3pm nix use portable\n"
+		"  c3pm nix use PATH\n"
+		"  c3pm nix reset"
+	);
 }
 
 fn int? run_nix_command(String[] args)
 {
-	if (args.len >= 3 && args[2] == "setup") return run_nix_setup_command(args);
-	io::printn(
-		"Usage:\n"
-		"  c3pm nix setup\n"
-		"  c3pm nix setup --portable\n"
-		"  c3pm nix setup --path /path/to/nix"
-	);
-	return INVALID_NIX_CONFIG~;
+	if (args.len == 3 && args[2] == "status") return run_nix_status_command();
+	if (args.len == 3 && args[2] == "reset") return reset_nix_backend();
+	if (args.len == 4 && args[2] == "use")
+	{
+		if (args[3] == "system") return use_system_nix();
+		if (args[3] == "portable") return use_portable_nix();
+		return use_nix_path(args[3]);
+	}
+	print_nix_help();
+	return 2;
 }
 
 fn PortableNixRunner? select_nix_runner(Allocator allocator)
@@ -260,22 +344,13 @@ fn PortableNixRunner? select_nix_runner(Allocator allocator)
 		return portable_nix_runner(configured.copy(allocator));
 	}
 
-	String location = env::tget_var("NP_LOCATION")
-		?? env::tget_var("HOME")
-		?? "";
-	String embedded_nix = string::format(tmem, "%s/.nix-portable/bin/nix", location);
-	if (location.len && executable_file(embedded_nix))
-	{
-		return portable_nix_runner(embedded_nix.copy(allocator), true);
-	}
-
 	String config_path = xdg_config_path(tmem)!;
 	if (file::is_file(config_path))
 	{
 		NixBackendConfig? loaded = load_nix_backend_config(tmem);
 		if (catch loaded)
 		{
-			io::printfn("Invalid c3pm Nix configuration:\n  %s\n\nRun c3pm nix setup again.",
+			io::printfn("Invalid c3pm Nix configuration:\n  %s\n\nSelect a backend again with `c3pm nix use`.",
 				config_path);
 			return INVALID_NIX_CONFIG~;
 		}
@@ -289,12 +364,6 @@ fn PortableNixRunner? select_nix_runner(Allocator allocator)
 		return portable_nix_runner(native_nix.copy(allocator), true, false);
 	}
 
-	io::printn(
-		"Nix was not found.\n\n"
-		"Download and configure nix-portable with:\n\n"
-		"  c3pm nix setup --portable\n\n"
-		"Or configure an existing Nix executable with:\n\n"
-		"  c3pm nix setup --path /path/to/nix"
-	);
+	print_missing_nix_backend();
 	return NIX_NOT_CONFIGURED~;
 }

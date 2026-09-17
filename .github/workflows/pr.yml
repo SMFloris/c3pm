@@ -39,33 +39,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
 
-    env:
-      C3PM_NIX: nix
-
     steps:
       - name: Check out source
         uses: actions/checkout@v5
-
-      - name: Install native Nix
-        uses: cachix/install-nix-action@v31
-        with:
-          extra_nix_config: |
-            keep-derivations = true
-            keep-outputs = true
-
-      - name: Restore Nix store
-        uses: nix-community/cache-nix-action@v7
-        with:
-          primary-key: c3pm-nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.c3pm/nix/flake.lock') }}-${{ github.sha }}
-          restore-prefixes-first-match: |
-            c3pm-nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.c3pm/nix/flake.lock') }}-
-            c3pm-nix-${{ runner.os }}-${{ runner.arch }}-
-          save: false
-
-      - name: Enable nix-portable binary cache
-        uses: cachix/cachix-action@v17
-        with:
-          name: nix-portable
 
       - name: Install C3 compiler
         run: |
@@ -75,22 +51,34 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/c3-linux-static.tar.gz" -C "${RUNNER_TEMP}"
           echo "${RUNNER_TEMP}/c3" >> "${GITHUB_PATH}"
 
-      - name: Build c3pm portable executable
+      - name: Install musl toolchain
         run: |
-          c3c build
-          ./build/c3pm bundle c3pm \
-            --output "${RUNNER_TEMP}/c3pm-linux-x86_64"
+          sudo apt-get update
+          sudo apt-get install --yes musl-tools
+
+      - name: Build standalone c3pm executable
+        run: |
+          c3c --linux-libc=musl -z -static --cc musl-gcc -O2 build c3pm
+          cp build/c3pm "${RUNNER_TEMP}/c3pm-linux-x86_64"
+          chmod +x "${RUNNER_TEMP}/c3pm-linux-x86_64"
           test -f "${RUNNER_TEMP}/c3pm-linux-x86_64"
           test ! -L "${RUNNER_TEMP}/c3pm-linux-x86_64"
           test -x "${RUNNER_TEMP}/c3pm-linux-x86_64"
+          if readelf -l "${RUNNER_TEMP}/c3pm-linux-x86_64" | grep -q INTERP; then
+            echo "c3pm executable is dynamically linked" >&2
+            exit 1
+          fi
 
       - name: Run complete SQLite lifecycle
         run: |
-          unset C3PM_NIX
           export NP_LOCATION="${RUNNER_TEMP}/portable-c3pm-runtime"
+          export XDG_CONFIG_HOME="${RUNNER_TEMP}/c3pm-config"
+          export XDG_DATA_HOME="${RUNNER_TEMP}/c3pm-data"
           portable_c3pm="${RUNNER_TEMP}/c3pm-linux-x86_64"
 
           "${portable_c3pm}" --version
+          "${portable_c3pm}" nix use portable
+          "${portable_c3pm}" nix status | grep -F "Nix backend: portable"
           cd examples/sqlite-example
 
           "${portable_c3pm}" install

@@ -11,7 +11,7 @@ struct FakeNixRunner (NixRunner)
 	int locks;
 }
 
-fn void nix_runner_supports_embedded_direct_nix_test() @test
+fn void nix_runner_supports_portable_and_direct_nix_test() @test
 {
 	PortableNixRunner portable = portable_nix_runner("/tmp/nix-portable");
 	String[] wrapped = portable.command(tmem, { "build", ".#example" });
@@ -20,9 +20,9 @@ fn void nix_runner_supports_embedded_direct_nix_test() @test
 	test::eq("--option", wrapped[2]);
 	test::eq(NIX_PORTABLE_CACHE, wrapped[4]);
 
-	PortableNixRunner embedded = portable_nix_runner(
+	PortableNixRunner direct_runner = portable_nix_runner(
 		"/tmp/.nix-portable/bin/nix", true, false);
-	String[] direct = embedded.command(tmem, { "build", ".#example" });
+	String[] direct = direct_runner.command(tmem, { "build", ".#example" });
 	test::eq(3, direct.len);
 	test::eq("build", direct[1]);
 }

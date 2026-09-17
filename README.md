@@ -5,9 +5,9 @@ dependency graph, while `vendor.c3pm` attributes in both projects and libs, supp
 that c3pm uses to generate the deterministic Nix environment.
 
 The bootstrap implementation is written in C3 and currently targets C3 0.8.3.
-Linux x86_64 releases are distributed as single portable executables containing
-c3pm, nix-portable, and their runtime closure. The host does not need a separate
-Nix, nix-portable, c3pm, or C3 installation.
+Linux x86_64 releases are standalone static executables containing only c3pm.
+The host does not need C3 or a compatible system libc. Nix remains a separate
+backend: c3pm can use a native installation or download nix-portable on demand.
 
 ## Quickstart
 
@@ -29,6 +29,9 @@ Try the SQLite todo example:
 git clone https://github.com/SMFloris/c3pm.git
 cd c3pm/examples/sqlite-example
 
+# Skip this when native Nix is already available on PATH.
+c3pm nix use portable
+
 # Resolve the C3 graph, SQLite, nixpkgs, and the development environment.
 c3pm install
 
@@ -43,52 +46,66 @@ c3pm bundle
 ./dist/sqlite_example list
 ```
 
-The first command initializes the embedded nix-portable runtime and may fetch
-the inputs recorded in `.c3pm/nix/flake.lock`. Later commands reuse that store
-and lock.
+The portable backend is stored separately from c3pm. Its first Nix operation
+initializes nix-portable and may fetch the inputs recorded in
+`.c3pm/nix/flake.lock`. Later commands reuse that store and lock.
 
 Source builds first look for an explicitly configured Nix backend. If no
 configuration exists, c3pm automatically uses `nix` from `PATH`. When neither
-is available, c3pm prints the setup commands described below.
+is available, c3pm explains how to select the portable backend.
 
 ## Usage
 
 Run `c3pm` from a directory containing `project.json`, or from one of its
 subdirectories. c3pm discovers the project root automatically.
 
-### Configure Nix
+### Select a Nix backend
 
-Detect and save an existing `nix` executable from `PATH`:
+Inspect the active backend:
 
 ```sh
-c3pm nix setup
+c3pm nix status
 ```
 
-If Nix is not found, c3pm explains that you can install Nix and retry or use
-the portable setup command.
+The status report includes the selected backend, executable path, Nix version,
+and whether the selection came from configuration, `PATH`, or an environment
+override.
+
+With no saved selection, c3pm automatically uses `nix` from `PATH`. Select and
+persist that executable explicitly with:
+
+```sh
+c3pm nix use system
+```
 
 If Nix is not installed, let c3pm download and select nix-portable:
 
 ```sh
-c3pm nix setup --portable
+c3pm nix use portable
 ```
 
 This downloads the host-architecture nix-portable `v012` executable to
 `$XDG_DATA_HOME/c3pm/nix-portable`. When `XDG_DATA_HOME` is unset, c3pm uses
 `$HOME/.local/share/c3pm/nix-portable`.
 
-To use an existing native Nix installation, provide either an executable name
-on `PATH` or a path:
+To select another native Nix executable, provide its command name or path:
 
 ```sh
-c3pm nix setup --path nix
-c3pm nix setup --path /opt/nix/bin/nix
+c3pm nix use nix
+c3pm nix use /opt/nix/bin/nix
 ```
 
 The selected backend is recorded in `$XDG_CONFIG_HOME/c3pm/config.json`, or
-`$HOME/.config/c3pm/config.json` when `XDG_CONFIG_HOME` is unset. Setup works
-outside a C3 project. A saved selection takes precedence over automatic `nix`
-discovery; run either setup form again to change it.
+`$HOME/.config/c3pm/config.json` when `XDG_CONFIG_HOME` is unset. Backend
+commands work outside a C3 project. A saved selection takes precedence over
+automatic `nix` discovery. Return to automatic discovery with:
+
+```sh
+c3pm nix reset
+```
+
+If `c3pm nix status` cannot find any backend, it suggests installing Nix or
+running `c3pm nix use portable`.
 
 For one-off overrides, `C3PM_NIX=/path/to/nix` selects a native Nix client and
 `C3PM_NIX_PORTABLE=/path/to/nix-portable` selects a nix-portable launcher.
@@ -323,7 +340,7 @@ c3c test
 ```
 
 With no saved backend, a source build automatically uses `nix` from `PATH`.
-Configure a persistent native or portable backend with `c3pm nix setup`, or
+Select a persistent native or portable backend with `c3pm nix use`, or
 use a one-command override in CI:
 
 ```sh
@@ -332,8 +349,8 @@ C3PM_NIX=nix ./build/c3pm bundle
 ```
 
 Set `C3PM_NIX_PORTABLE=/path/to/nix-portable` instead to select a particular
-nix-portable bootstrap executable. Released bundles discover and use their
-embedded Nix client automatically.
+nix-portable bootstrap executable. The released c3pm executable never embeds
+Nix or nix-portable.
 
 ## License
 

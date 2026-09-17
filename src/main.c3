@@ -82,6 +82,8 @@ fn void print_help()
 		"  install\n"
 		"  shell [-- COMMAND...]\n"
 		"  bundle [TARGET] [--output PATH]\n"
-		"  nix setup [--portable | --path PATH]\n"
+		"  nix status\n"
+		"  nix use <system | portable | PATH>\n"
+		"  nix reset\n"
 	);
 }
