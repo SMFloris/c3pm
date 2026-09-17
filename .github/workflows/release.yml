@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -63,11 +63,10 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/c3-linux-static.tar.gz" -C "${RUNNER_TEMP}"
           echo "${RUNNER_TEMP}/c3" >> "${GITHUB_PATH}"
 
-      - name: Build and test c3pm
+      - name: Build c3pm
         run: |
           c3c --version
           c3c build
-          c3c test
 
       - name: Build portable executable
         run: |
@@ -76,23 +75,6 @@ jobs:
           test -f release/c3pm-linux-x86_64
           test ! -L release/c3pm-linux-x86_64
           test -x release/c3pm-linux-x86_64
-
-      - name: Test released executable bootstrap
-        run: |
-          unset C3PM_NIX
-          export NP_LOCATION="${RUNNER_TEMP}/released-c3pm"
-          release/c3pm-linux-x86_64 --version
-          cd examples/sqlite-example
-          ../../release/c3pm-linux-x86_64 install
-          ../../release/c3pm-linux-x86_64 shell -- c3c --version
-          ../../release/c3pm-linux-x86_64 bundle \
-            --output "${RUNNER_TEMP}/sqlite-example-portable"
-          test -f "${RUNNER_TEMP}/sqlite-example-portable"
-          test ! -L "${RUNNER_TEMP}/sqlite-example-portable"
-          test -x "${RUNNER_TEMP}/sqlite-example-portable"
-          cd "${RUNNER_TEMP}"
-          NP_LOCATION="${RUNNER_TEMP}/released-example" \
-            ./sqlite-example-portable list
 
       - name: Create source archive and checksums
         run: |

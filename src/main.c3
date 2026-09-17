@@ -1,9 +1,7 @@
 module c3pm;
 
 import std::io;
-import std::io::file;
 import std::io::path;
-import std::os::env;
 
 fn int main(String[] args)
 {
@@ -31,26 +29,10 @@ fn int? run_command(String[] args)
 {
 	@pool()
 	{
-		PortableNixRunner portable;
-		if (try configured = env::tget_var("C3PM_NIX"))
-		{
-			portable = portable_nix_runner(configured, true);
-		}
-		else if (try configured = env::tget_var("C3PM_NIX_PORTABLE"))
-		{
-			portable = portable_nix_runner(configured);
-		}
-		else
-		{
-			String location = env::tget_var("NP_LOCATION")
-				?? env::tget_var("HOME")
-				?? "";
-			String embedded_nix = string::format(tmem,
-				"%s/.nix-portable/bin/nix", location);
-			portable = location.len && file::is_file(embedded_nix)
-				? portable_nix_runner(embedded_nix, true)
-				: portable_nix_runner();
-		}
+		if (args[1] == "nix") return run_nix_command(args);
+		PortableNixRunner? selected = select_nix_runner(tmem);
+		if (catch selected) return 1;
+		PortableNixRunner portable = selected;
 		NixRunner runner = (NixRunner)&portable;
 		Path root = find_project_root(tmem, path::tcwd()!)!;
 		switch (args[1])
@@ -100,5 +82,6 @@ fn void print_help()
 		"  install\n"
 		"  shell [-- COMMAND...]\n"
 		"  bundle [TARGET] [--output PATH]\n"
+		"  nix setup [--portable | --path PATH]\n"
 	);
 }

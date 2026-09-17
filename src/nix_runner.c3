@@ -18,19 +18,37 @@ struct PortableNixRunner (NixRunner)
 {
 	String portable_executable;
 	bool direct_nix;
+	bool use_portable_cache;
 }
 
-fn PortableNixRunner portable_nix_runner(String executable = "nix-portable", bool direct_nix = false)
+const String NIX_PORTABLE_CACHE = "https://nix-portable.cachix.org";
+const String NIX_PORTABLE_CACHE_KEY =
+	"nix-portable.cachix.org-1:zb9EtPV/tW34g4BD6Vc4xtSPdgpz3EF6y3X/WaMnifg=";
+
+fn PortableNixRunner portable_nix_runner(String executable = "nix-portable",
+	bool direct_nix = false, bool use_portable_cache = true)
 {
-	return { .portable_executable = executable, .direct_nix = direct_nix };
+	return {
+		.portable_executable = executable,
+		.direct_nix = direct_nix,
+		.use_portable_cache = use_portable_cache,
+	};
 }
 
 fn String[] PortableNixRunner.command(&self, Allocator allocator, String[] args)
 {
 	List{String} command;
-	command.init(allocator, args.len + (self.direct_nix ? 1 : 2));
+	command.init(allocator, args.len + (self.direct_nix ? 1 : 2) +
+		(self.use_portable_cache ? 6 : 0));
 	command.push(self.portable_executable);
 	if (!self.direct_nix) command.push("nix");
+	if (self.use_portable_cache)
+	{
+		command.push_all({
+			"--option", "extra-substituters", NIX_PORTABLE_CACHE,
+			"--option", "extra-trusted-public-keys", NIX_PORTABLE_CACHE_KEY,
+		});
+	}
 	command.push_all(args);
 	return command.to_array(allocator);
 }

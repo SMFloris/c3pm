@@ -1,0 +1,124 @@
+name: Pull request tests
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  C3_VERSION: "0.8.3"
+
+jobs:
+  unit:
+    name: C3 unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Install C3 compiler
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/c3lang/c3c/releases/download/v${C3_VERSION}/c3-linux-static.tar.gz" \
+            --output "${RUNNER_TEMP}/c3-linux-static.tar.gz"
+          tar -xzf "${RUNNER_TEMP}/c3-linux-static.tar.gz" -C "${RUNNER_TEMP}"
+          echo "${RUNNER_TEMP}/c3" >> "${GITHUB_PATH}"
+
+      - name: Run C3 tests
+        run: c3c test
+
+  sqlite-end-to-end:
+    name: SQLite end-to-end
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    env:
+      C3PM_NIX: nix
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Install native Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            keep-derivations = true
+            keep-outputs = true
+
+      - name: Restore Nix store
+        uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: c3pm-nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.c3pm/nix/flake.lock') }}-${{ github.sha }}
+          restore-prefixes-first-match: |
+            c3pm-nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.c3pm/nix/flake.lock') }}-
+            c3pm-nix-${{ runner.os }}-${{ runner.arch }}-
+          save: false
+
+      - name: Enable nix-portable binary cache
+        uses: cachix/cachix-action@v17
+        with:
+          name: nix-portable
+
+      - name: Install C3 compiler
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/c3lang/c3c/releases/download/v${C3_VERSION}/c3-linux-static.tar.gz" \
+            --output "${RUNNER_TEMP}/c3-linux-static.tar.gz"
+          tar -xzf "${RUNNER_TEMP}/c3-linux-static.tar.gz" -C "${RUNNER_TEMP}"
+          echo "${RUNNER_TEMP}/c3" >> "${GITHUB_PATH}"
+
+      - name: Build c3pm portable executable
+        run: |
+          c3c build
+          ./build/c3pm bundle c3pm \
+            --output "${RUNNER_TEMP}/c3pm-linux-x86_64"
+          test -f "${RUNNER_TEMP}/c3pm-linux-x86_64"
+          test ! -L "${RUNNER_TEMP}/c3pm-linux-x86_64"
+          test -x "${RUNNER_TEMP}/c3pm-linux-x86_64"
+
+      - name: Run complete SQLite lifecycle
+        run: |
+          unset C3PM_NIX
+          export NP_LOCATION="${RUNNER_TEMP}/portable-c3pm-runtime"
+          portable_c3pm="${RUNNER_TEMP}/c3pm-linux-x86_64"
+
+          "${portable_c3pm}" --version
+          cd examples/sqlite-example
+
+          "${portable_c3pm}" install
+          "${portable_c3pm}" shell -- c3c clean
+          "${portable_c3pm}" shell -- c3c build
+          test -x build/sqlite_example
+          "${portable_c3pm}" shell -- \
+            ./build/sqlite_example add "pull request lifecycle"
+          "${portable_c3pm}" shell -- \
+            ./build/sqlite_example list | grep -F "pull request lifecycle"
+          test "$(od -An -tx1 -N16 todos.db | tr -d ' \n')" = \
+            "53514c69746520666f726d6174203300"
+
+          "${portable_c3pm}" shell -- c3c clean
+          "${portable_c3pm}" install
+          "${portable_c3pm}" shell -- c3c build
+          test -x build/sqlite_example
+          "${portable_c3pm}" shell -- \
+            ./build/sqlite_example list | grep -F "pull request lifecycle"
+
+          "${portable_c3pm}" bundle \
+            --output "${RUNNER_TEMP}/sqlite-example-portable"
+          test -f "${RUNNER_TEMP}/sqlite-example-portable"
+          test ! -L "${RUNNER_TEMP}/sqlite-example-portable"
+          test -x "${RUNNER_TEMP}/sqlite-example-portable"
+
+          cd "${RUNNER_TEMP}"
+          NP_LOCATION="${RUNNER_TEMP}/sqlite-bundle-runtime" \
+            ./sqlite-example-portable add "bundled lifecycle"
+          NP_LOCATION="${RUNNER_TEMP}/sqlite-bundle-runtime" \
+            ./sqlite-example-portable list | grep -F "bundled lifecycle"

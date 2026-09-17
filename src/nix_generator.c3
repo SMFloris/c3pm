@@ -153,7 +153,6 @@ fn String generate_flake_nix(Allocator allocator, Graph* graph, Metadata* projec
 		"{\n  inputs = {\n"
 		"    nixpkgs.url = \"github:NixOS/nixpkgs/nixpkgs-unstable\";\n"
 		"    nix-portable.url = \"github:DavHau/nix-portable\";\n"
-		"    nix-portable.inputs.defaultChannel.follows = \"nixpkgs\";\n"
 		"    nix-portable-nix.follows = \"nix-portable/nix\";\n\n");
 	foreach (position, index : sorted)
 	{

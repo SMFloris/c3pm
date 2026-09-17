@@ -47,10 +47,52 @@ The first command initializes the embedded nix-portable runtime and may fetch
 the inputs recorded in `.c3pm/nix/flake.lock`. Later commands reuse that store
 and lock.
 
+Source builds first look for an explicitly configured Nix backend. If no
+configuration exists, c3pm automatically uses `nix` from `PATH`. When neither
+is available, c3pm prints the setup commands described below.
+
 ## Usage
 
 Run `c3pm` from a directory containing `project.json`, or from one of its
 subdirectories. c3pm discovers the project root automatically.
+
+### Configure Nix
+
+Detect and save an existing `nix` executable from `PATH`:
+
+```sh
+c3pm nix setup
+```
+
+If Nix is not found, c3pm explains that you can install Nix and retry or use
+the portable setup command.
+
+If Nix is not installed, let c3pm download and select nix-portable:
+
+```sh
+c3pm nix setup --portable
+```
+
+This downloads the host-architecture nix-portable `v012` executable to
+`$XDG_DATA_HOME/c3pm/nix-portable`. When `XDG_DATA_HOME` is unset, c3pm uses
+`$HOME/.local/share/c3pm/nix-portable`.
+
+To use an existing native Nix installation, provide either an executable name
+on `PATH` or a path:
+
+```sh
+c3pm nix setup --path nix
+c3pm nix setup --path /opt/nix/bin/nix
+```
+
+The selected backend is recorded in `$XDG_CONFIG_HOME/c3pm/config.json`, or
+`$HOME/.config/c3pm/config.json` when `XDG_CONFIG_HOME` is unset. Setup works
+outside a C3 project. A saved selection takes precedence over automatic `nix`
+discovery; run either setup form again to change it.
+
+For one-off overrides, `C3PM_NIX=/path/to/nix` selects a native Nix client and
+`C3PM_NIX_PORTABLE=/path/to/nix-portable` selects a nix-portable launcher.
+These environment variables take precedence over the saved configuration.
 
 ### Add a dependency
 
@@ -280,9 +322,9 @@ c3c test
 ./build/c3pm --help
 ```
 
-By default, a source build invokes `nix-portable`. CI systems or development
-machines with Nix installed can bypass the portability layer and use the native
-daemon-backed client:
+With no saved backend, a source build automatically uses `nix` from `PATH`.
+Configure a persistent native or portable backend with `c3pm nix setup`, or
+use a one-command override in CI:
 
 ```sh
 C3PM_NIX=nix ./build/c3pm install

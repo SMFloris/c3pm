@@ -15,13 +15,38 @@ fn void nix_runner_supports_embedded_direct_nix_test() @test
 {
 	PortableNixRunner portable = portable_nix_runner("/tmp/nix-portable");
 	String[] wrapped = portable.command(tmem, { "build", ".#example" });
-	test::eq(4, wrapped.len);
+	test::eq(10, wrapped.len);
 	test::eq("nix", wrapped[1]);
+	test::eq("--option", wrapped[2]);
+	test::eq(NIX_PORTABLE_CACHE, wrapped[4]);
 
-	PortableNixRunner embedded = portable_nix_runner("/tmp/.nix-portable/bin/nix", true);
+	PortableNixRunner embedded = portable_nix_runner(
+		"/tmp/.nix-portable/bin/nix", true, false);
 	String[] direct = embedded.command(tmem, { "build", ".#example" });
 	test::eq(3, direct.len);
 	test::eq("build", direct[1]);
+}
+
+fn void nix_backend_config_round_trip_test() @test
+{
+	NixBackendConfig original = {
+		.mode = "portable",
+		.executable = `/tmp/a path/with"quote/nix-portable`,
+	};
+	String encoded = encode_nix_backend_config(tmem, original);
+	NixBackendConfig parsed = parse_nix_backend_config(tmem, encoded)!!;
+	test::eq("portable", parsed.mode);
+	test::eq(original.executable, parsed.executable);
+	test::@error(parse_nix_backend_config(tmem,
+		`{"nix":{"mode":"unknown","path":"/tmp/nix"}}`), INVALID_NIX_CONFIG);
+}
+
+fn void executable_lookup_accepts_path_and_name_test() @test
+{
+	String shell = find_executable(tmem, "/bin/sh")!!;
+	test::@check(shell.is_absolute_path()!!);
+	test::@check(executable_file(shell));
+	test::@error(find_executable(tmem, "c3pm-command-that-does-not-exist"), NOT_FOUND);
 }
 
 fn void? FakeNixRunner.lock(&self, String flake_dir) @dynamic

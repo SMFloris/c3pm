@@ -1,5 +1,19 @@
 {
   "nodes": {
+    "defaultChannel": {
+      "locked": {
+        "lastModified": 1789546076,
+        "narHash": "sha256-vWkSk5bbfTqdtMoSgD9FshACO8JCvXTFi+3cqEp0mH0=",
+        "rev": "b1b875982b17dabde9b4a37f3e229e74913e6db3",
+        "type": "tarball",
+        "url": "https://releases.nixos.org/nixos/unstable/nixos-26.11pre1074753.b1b875982b17/nixexprs.tar.zst"
+      },
+      "original": {
+        "id": "nixpkgs",
+        "ref": "nixos-unstable",
+        "type": "indirect"
+      }
+    },
     "flake-compat": {
       "flake": false,
       "locked": {
@@ -76,9 +90,7 @@
     },
     "nix-portable": {
       "inputs": {
-        "defaultChannel": [
-          "nixpkgs"
-        ],
+        "defaultChannel": "defaultChannel",
         "nix": "nix",
         "nix-github-actions": "nix-github-actions",
         "nixpkgs": [
