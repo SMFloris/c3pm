@@ -211,6 +211,11 @@ The sole dependency lock database is `.c3pm/nix/flake.lock`. It pins nixpkgs,
 nix-portable, and every fetched C3 source. c3pm does not clone sources,
 calculate source hashes, or solve versions itself.
 
+For complete, real-world `vendor.c3pm` examples, see the library manifests in
+[SMFloris/c3c-vendor](https://github.com/SMFloris/c3c-vendor/tree/c3pm/libraries).
+They demonstrate GitHub source declarations, nixpkgs inputs, transitive C3
+dependencies, and custom Nix imports for packages unavailable in nixpkgs.
+
 ## Native dependencies and Nix
 
 C3 and Nix metadata answer different questions. Standard C3 metadata tells the
