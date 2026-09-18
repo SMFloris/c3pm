@@ -68,11 +68,7 @@ jobs:
           sed -i \
             "s/^const String C3PM_VERSION = .*$/const String C3PM_VERSION = \"${release_version}\";/" \
             src/version.c3
-          sed -i \
-            "s/^\*\*Current c3pm version:\*\* .*$/\*\*Current c3pm version:\*\* ${release_version}./" \
-            README.md
           sed -i "s/${readme_c3_pattern}/${C3_VERSION}/g" README.md
-          grep -Fx "**Current c3pm version:** ${release_version}." README.md
           grep -Fx "> **Default C3 target:** C3 ${C3_VERSION}." README.md
           grep -Fx "The default C3 version is **${C3_VERSION}**. Pin a version for the project, or reset it to the default:" README.md
           c3c --version

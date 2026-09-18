@@ -10,7 +10,7 @@ description: Reproducible C3 projects, powered by Nix.
   <h1>A complete package manager for C3</h1>
   <p class="lede">Manage C3 packages, native libraries, the compiler, and nixpkgs together. c3pm turns standard C3 metadata and <code>vendor.c3pm</code> configuration into a reproducible environment for every project.</p>
   <div class="hero-actions">
-    <a class="button" href="#install">Install c3pm</a>
+    <a class="button" href="#install">Install c3pm v{{ site.c3pm_version }}</a>
     <a class="text-link" href="https://github.com/SMFloris/c3pm">View on GitHub <span aria-hidden="true">→</span></a>
   </div>
 </header>
@@ -44,7 +44,7 @@ description: Reproducible C3 projects, powered by Nix.
   </div>
   <div>
     <strong>Default toolchain</strong>
-    <span>C3 0.8.3 · nixpkgs-unstable</span>
+    <span>C3 {{ site.c3_version }} · nixpkgs-unstable</span>
   </div>
 </div>
 

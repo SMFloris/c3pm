@@ -25,6 +25,18 @@ module C3pmDocs
     def generate(site)
       readme_path = File.expand_path("../README.md", site.source)
       readme = File.read(readme_path, encoding: "UTF-8")
+      version_path = File.expand_path("../src/version.c3", site.source)
+      version_source = File.read(version_path, encoding: "UTF-8")
+      site.config["c3pm_version"] = required_match(
+        version_source,
+        /C3PM_VERSION\s*=\s*"([^"]+)"/,
+        version_path
+      )
+      site.config["c3_version"] = required_match(
+        readme,
+        /^> \*\*Default C3 target:\*\* C3 ([0-9A-Za-z.+-]+)\.$/,
+        readme_path
+      )
       readme.sub!(/\A# .+\n+/, "")
 
       chunks = readme.split(/(?=^## )/)
@@ -67,6 +79,13 @@ module C3pmDocs
     end
 
     private
+
+    def required_match(content, pattern, path)
+      match = content.match(pattern)
+      raise "Could not find version in #{path}" unless match
+
+      match[1]
+    end
 
     def pagination_link(direction, section)
       return "" unless section
