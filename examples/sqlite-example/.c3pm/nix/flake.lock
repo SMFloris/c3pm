@@ -1,6 +1,6 @@
 {
   "nodes": {
-    "c3pm_src_smfloris_c3c_vendor_1b3a02ba": {
+    "c3pm_src_github_smfloris_c3c_vendor_4078588a": {
       "flake": false,
       "locked": {
         "lastModified": 1789592696,
@@ -179,7 +179,7 @@
     },
     "root": {
       "inputs": {
-        "c3pm_src_smfloris_c3c_vendor_1b3a02ba": "c3pm_src_smfloris_c3c_vendor_1b3a02ba",
+        "c3pm_src_github_smfloris_c3c_vendor_4078588a": "c3pm_src_github_smfloris_c3c_vendor_4078588a",
         "nix-portable": "nix-portable",
         "nix-portable-nix": [
           "nix-portable",

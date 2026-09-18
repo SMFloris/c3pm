@@ -41,8 +41,8 @@ fn void append_dependency_build_inputs(DString* out, GraphNode* node)
 	foreach (attr : node.nix.build_inputs) out.appendf("    pkgs.%s\n", attr);
 	foreach (import_path : node.nix.imports)
 	{
-		String relative = node.source.path.len
-			? string::format(tmem, "%s/%s", node.source.path, nix_import_relative_path(import_path))
+		String relative = node.source.subdir.len
+			? string::format(tmem, "%s/%s", node.source.subdir, nix_import_relative_path(import_path))
 			: nix_import_relative_path(import_path);
 		out.append("    (pkgs.callPackage (sources.");
 		append_nix_string(out, node.name);
@@ -66,6 +66,31 @@ fn void append_project_build_inputs(DString* out, NixInputs* inputs)
 	out.append("  ];\n\n");
 }
 
+fn void append_link_package(DString* out, LinkSpec* link)
+{
+	if (!link.nix_package.len) return;
+	if (!link.nix_package.starts_with("path:"))
+	{
+		out.appendf("    pkgs.%s\n", link.nix_package);
+		return;
+	}
+	String relative = nix_import_relative_path(link.nix_package[5..]);
+	out.append("    (import (");
+	if (link.has_source)
+	{
+		out.append("sources."); append_nix_string(out, link.name); out.append(" + ");
+		String combined = link.source.subdir.len
+			? string::format(tmem, "/%s/%s", link.source.subdir, relative)
+			: string::format(tmem, "/%s", relative);
+		append_nix_string(out, combined);
+	}
+	else
+	{
+		out.append("./imports/links/"); out.append(link.name); out.append("/"); out.append(relative);
+	}
+	out.append(") { inherit pkgs; })\n");
+}
+
 fn void append_dependency_list(DString* out, String[] dependencies)
 {
 	out.append("  dependencies = [\n");
@@ -85,10 +110,10 @@ fn String generate_dependency_nix(Allocator allocator, GraphNode* node)
 	append_nix_string(&out, node.name);
 	out.append(";\n\n  c3lPath = sources.");
 	append_nix_string(&out, node.name);
-	if (node.source.path.len)
+	if (node.source.subdir.len)
 	{
 		out.append(" + ");
-		append_nix_string(&out, string::format(tmem, "/%s", node.source.path));
+		append_nix_string(&out, string::format(tmem, "/%s", node.source.subdir));
 	}
 	out.append(";\n\n");
 	append_dependency_list(&out, node.dependencies);
@@ -103,14 +128,44 @@ fn String generate_dependency_nix(Allocator allocator, GraphNode* node)
 fn String generate_project_nix(Allocator allocator, Metadata* project)
 {
 	DString out = dstring::new_with_capacity(allocator, 512);
-	out.append("{ pkgs, deps }:\n\n{\n  name = \"project\";\n  version = ");
+	out.append("{ pkgs, deps, sources, linkedProjects }:\n\n{\n  name = \"project\";\n  version = ");
 	append_nix_string(&out, project.version);
+	out.append(";\n  c3cVersion = ");
+	append_nix_string(&out, project.toolchain.c3c_version);
 	out.append(";\n\n");
 	append_dependency_list(&out, project.dependencies);
 	append_attr_list(&out, "nativeBuildInputs", project.nix.native_build_inputs);
-	append_project_build_inputs(&out, &project.nix);
+	out.append("  buildInputs = [\n");
+	foreach (attr : project.nix.build_inputs) out.appendf("    pkgs.%s\n", attr);
+	foreach (import_path : project.nix.imports)
+	{
+		out.append("    (pkgs.callPackage (./imports/project + ");
+		append_nix_string(&out, string::format(tmem, "/%s", nix_import_relative_path(import_path)));
+		out.append(") {})\n");
+	}
+	foreach (&link : project.links)
+	{
+		if (link.passthrough) continue;
+		if (link.c3c_target != "none")
+		{
+			out.append("    linkedProjects."); append_nix_string(&out, link.name); out.append("\n");
+		}
+		append_link_package(&out, link);
+	}
+	out.append("  ];\n\n");
 	append_attr_list(&out, "propagatedNativeBuildInputs", project.nix.propagated_native_build_inputs);
-	append_attr_list(&out, "propagatedBuildInputs", project.nix.propagated_build_inputs);
+	out.append("  propagatedBuildInputs = [\n");
+	foreach (attr : project.nix.propagated_build_inputs) out.appendf("    pkgs.%s\n", attr);
+	foreach (&link : project.links)
+	{
+		if (!link.passthrough) continue;
+		if (link.c3c_target != "none")
+		{
+			out.append("    linkedProjects."); append_nix_string(&out, link.name); out.append("\n");
+		}
+		append_link_package(&out, link);
+	}
+	out.append("  ];\n\n");
 	out.append("}\n");
 	return out.str_view();
 }
@@ -137,12 +192,41 @@ fn sz[] sorted_node_indices(Allocator allocator, Graph* graph)
 
 fn bool source_seen_before(Graph* graph, sz[] sorted, sz position)
 {
-	FetchGithub source = graph.nodes[sorted[position]].source;
+	PackageSource source = graph.nodes[sorted[position]].source;
 	for (sz i = 0; i < position; i++)
 	{
 		if (source_identity_equal(source, graph.nodes[sorted[i]].source)) return true;
 	}
 	return false;
+}
+
+fn bool graph_has_source(Graph* graph, PackageSource source)
+{
+	foreach (&node : graph.nodes) if (source_identity_equal(node.source, source)) return true;
+	return false;
+}
+
+fn bool link_source_seen_before(Metadata* project, sz position)
+{
+	if (!project.links[position].has_source) return true;
+	for (sz i = 0; i < position; i++)
+	{
+		if (project.links[i].has_source &&
+			source_identity_equal(project.links[i].source, project.links[position].source)) return true;
+	}
+	return false;
+}
+
+fn void append_flake_source(DString* out, PackageSource source)
+{
+	out.append("    "); out.append(source_input_name(tmem, source));
+	out.append(" = {\n      url = "); append_nix_string(out, source_url(tmem, source));
+	out.append(";\n      flake = false;\n");
+	if (source.sha256.len)
+	{
+		out.append("      narHash = "); append_nix_string(out, source.sha256); out.append(";\n");
+	}
+	out.append("    };\n\n");
 }
 
 fn String generate_flake_nix(Allocator allocator, Graph* graph, Metadata* project)
@@ -151,18 +235,23 @@ fn String generate_flake_nix(Allocator allocator, Graph* graph, Metadata* projec
 	sz[] sorted = sorted_node_indices(tmem, graph);
 	out.append(
 		"{\n  inputs = {\n"
-		"    nixpkgs.url = \"github:NixOS/nixpkgs/nixpkgs-unstable\";\n"
+		"    nixpkgs.url = ");
+	append_nix_string(&out, project.toolchain.nixpkgs.len
+		? project.toolchain.nixpkgs : "github:NixOS/nixpkgs/nixpkgs-unstable");
+	out.append(";\n"
 		"    nix-portable.url = \"github:DavHau/nix-portable\";\n"
 		"    nix-portable-nix.follows = \"nix-portable/nix\";\n\n");
 	foreach (position, index : sorted)
 	{
 		if (source_seen_before(graph, sorted, position)) continue;
-		FetchGithub source = graph.nodes[index].source;
-		out.append("    ");
-		out.append(source_input_name(tmem, source));
-		out.append(" = {\n      url = ");
-		append_nix_string(&out, string::format(tmem, "github:%s/%s/%s", source.owner, source.repo, source.rev));
-		out.append(";\n      flake = false;\n    };\n\n");
+		PackageSource source = graph.nodes[index].source;
+		append_flake_source(&out, source);
+	}
+	foreach (i, &link : project.links)
+	{
+		if (!link.has_source || graph_has_source(graph, link.source) ||
+			link_source_seen_before(project, i)) continue;
+		append_flake_source(&out, link.source);
 	}
 	out.append(
 		"  };\n\n"
@@ -228,6 +317,12 @@ fn String generate_shell_nix(Allocator allocator, Graph* graph, Metadata* projec
 		out.append(source_input_name(tmem, node.source));
 		out.append(";\n");
 	}
+	foreach (&link : project.links)
+	{
+		if (!link.has_source) continue;
+		out.append("    "); append_nix_string(&out, link.name); out.append(" = inputs.");
+		out.append(source_input_name(tmem, link.source)); out.append(";\n");
+	}
 	out.append("  };\n\n  deps = pkgs.lib.fix (self: {\n");
 	foreach (index : sorted)
 	{
@@ -240,7 +335,24 @@ fn String generate_shell_nix(Allocator allocator, Graph* graph, Metadata* projec
 	}
 	out.append(
 		"  });\n\n"
-		"  project = import ./project.nix { inherit pkgs deps; };\n"
+		"  linkedProjects = {\n");
+	foreach (&link : project.links)
+	{
+		if (link.c3c_target == "none") continue;
+		out.append("    "); append_nix_string(&out, link.name);
+		out.append(" = c3pm.c3LinkedProjectBuilder { name = "); append_nix_string(&out, link.name);
+		out.append("; src = sources."); append_nix_string(&out, link.name);
+		if (link.source.subdir.len)
+		{
+			out.append(" + "); append_nix_string(&out, string::format(tmem, "/%s", link.source.subdir));
+		}
+		out.append("; target = "); append_nix_string(&out, link.c3c_target);
+		out.append("; c3cVersion = "); append_nix_string(&out, project.toolchain.c3c_version);
+		out.append("; };\n");
+	}
+	out.append(
+		"  };\n\n"
+		"  project = import ./project.nix { inherit pkgs deps sources linkedProjects; };\n"
 		"  graph = c3pm.closure project.dependencies;\n"
 		"  c3pmLibs = c3pm.mkC3LibTree graph;\n"
 		"  projectSource = ./project-source;\n"
@@ -267,6 +379,10 @@ const String C3PM_LIB_NIX =
 
 let
   lib = pkgs.lib;
+
+  selectC3c = version:
+    if version == "" || lib.getVersion pkgs.c3c == version then pkgs.c3c
+    else throw "c3pm: nixpkgs provides c3c ${lib.getVersion pkgs.c3c}, but project requires ${version}";
 
   closure = roots:
     let
@@ -301,7 +417,7 @@ let
   mkShell = { project, graph }:
     let inputs = collectInputs project graph;
     in pkgs.mkShell {
-      nativeBuildInputs = [ pkgs.c3c ] ++ inputs.nativeBuildInputs;
+      nativeBuildInputs = [ (selectC3c project.c3cVersion) ] ++ inputs.nativeBuildInputs;
       buildInputs = inputs.buildInputs;
     };
 
@@ -314,7 +430,7 @@ let
       version = project.version;
       meta.mainProgram = target;
       inherit src;
-      nativeBuildInputs = [ pkgs.c3c ] ++ inputs.nativeBuildInputs;
+      nativeBuildInputs = [ (selectC3c project.c3cVersion) ] ++ inputs.nativeBuildInputs;
       buildInputs = inputs.buildInputs;
       unpackPhase = ''
         runHook preUnpack
@@ -339,8 +455,42 @@ let
         cp .c3pm-build-out/${lib.escapeShellArg target} $out/bin/${lib.escapeShellArg target}
         runHook postInstall
       '';
+      };
+
+  c3LinkedProjectBuilder = { name, src, target, c3cVersion }:
+    pkgs.stdenv.mkDerivation {
+      pname = name;
+      version = "0.0.0";
+      inherit src;
+      nativeBuildInputs = [ (selectC3c c3cVersion) ];
+      buildPhase = ''
+        runHook preBuild
+        export HOME="$TMPDIR/c3pm-home"
+        export XDG_CACHE_HOME="$HOME/.cache"
+        mkdir -p "$XDG_CACHE_HOME"
+        c3c build ${lib.escapeShellArg target} --output-dir .c3pm-build-out
+        runHook postBuild
+      '';
+      installPhase = ''
+        runHook preInstall
+        mkdir -p $out/lib
+        find .c3pm-build-out -maxdepth 1 -type f \( -name '*.a' -o -name '*.so' -o -name '*.so.*' -o -name '*.dylib' -o -name '*.lib' -o -name '*.dll' \) -exec cp -P {} $out/lib/ \;
+        test -n "$(find $out/lib -maxdepth 1 -type f -print -quit)" || {
+          echo "c3pm: linked C3 target produced no static or dynamic library" >&2
+          exit 1
+        }
+        built="$(find $out/lib -maxdepth 1 -type f -print -quit)"
+        case "$built" in
+          *.a) ln -sf "$(basename "$built")" "$out/lib/lib${name}.a" ;;
+          *.so|*.so.*) ln -sf "$(basename "$built")" "$out/lib/lib${name}.so" ;;
+          *.dylib) ln -sf "$(basename "$built")" "$out/lib/lib${name}.dylib" ;;
+          *.lib) ln -sf "$(basename "$built")" "$out/lib/${name}.lib" ;;
+          *.dll) ln -sf "$(basename "$built")" "$out/lib/${name}.dll" ;;
+        esac
+        runHook postInstall
+      '';
     };
 in {
-  inherit closure collectInputs mkC3LibTree mkShell c3ProjectBuilder;
+  inherit closure collectInputs mkC3LibTree mkShell c3ProjectBuilder c3LinkedProjectBuilder;
 }
 `;

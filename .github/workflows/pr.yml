@@ -14,6 +14,18 @@ env:
   C3_VERSION: "0.8.3"
 
 jobs:
+  installer:
+    name: Installer tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Run installer tests
+        run: sh test/install_script_test.sh
+
   unit:
     name: C3 unit tests
     runs-on: ubuntu-24.04
@@ -77,8 +89,8 @@ jobs:
           portable_c3pm="${RUNNER_TEMP}/c3pm-linux-x86_64"
 
           "${portable_c3pm}" --version
-          "${portable_c3pm}" nix use portable
-          "${portable_c3pm}" nix status | grep -F "Nix backend: portable"
+          "${portable_c3pm}" toolchain nix use portable
+          "${portable_c3pm}" toolchain nix status | grep -F "Nix backend: portable"
           cd examples/sqlite-example
 
           "${portable_c3pm}" install

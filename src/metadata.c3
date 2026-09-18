@@ -61,6 +61,43 @@ fn Object*? c3pm_vendor(Object* root)
 	return c3pm;
 }
 
+fn SourceKind? parse_source_kind(String value)
+{
+	if (value == "github") return GITHUB;
+	if (value == "git+https") return GIT_HTTPS;
+	if (value == "git+ssh") return GIT_SSH;
+	if (value == "archive+https") return ARCHIVE_HTTPS;
+	if (value == "path") return FOLDER;
+	return INVALID_SOURCE~;
+}
+
+fn PackageSource? parse_source_object(Allocator allocator, Object* declaration)
+{
+	if (!declaration.is_map() || !declaration.has_key("source") ||
+		!declaration.get("source")!.is_string()) return INVALID_METADATA~;
+	SourceKind kind = parse_source_kind(declaration.get_string("source")!)!;
+	String location;
+	switch (kind)
+	{
+		case GITHUB:
+			location = string::format(allocator, "%s/%s",
+				declaration.get_string("owner")!, declaration.get_string("repository")!);
+		case GIT_HTTPS:
+		case GIT_SSH:
+		case ARCHIVE_HTTPS: location = declaration.get_string("url")!.copy(allocator);
+		case FOLDER: location = declaration.get_string("path")!.copy(allocator);
+	}
+	PackageSource parsed = {
+		.kind = kind,
+		.location = location,
+		.rev = declaration.has_key("rev") ? declaration.get_string("rev")!.copy(allocator) : "",
+		.subdir = declaration.has_key("subdir") ? declaration.get_string("subdir")!.copy(allocator) : "",
+		.sha256 = declaration.has_key("sha256") ? declaration.get_string("sha256")!.copy(allocator) : "",
+	};
+	parsed.validate()!;
+	return parsed;
+}
+
 fn DependencySpec[]? parse_sources(Allocator allocator, Object* c3pm)
 {
 	List{DependencySpec} specs;
@@ -73,19 +110,67 @@ fn DependencySpec[]? parse_sources(Allocator allocator, Object* c3pm)
 	if (!dependencies.is_map()) return INVALID_METADATA~;
 	dependencies.@each_entry(; String name, Object* declaration)
 	{
-		if (!name.len || !declaration.is_map() || !declaration.has_key("fetchGithub")) return INVALID_METADATA~;
-		Object* github = declaration.get("fetchGithub")!!;
-		if (!github.is_map()) return INVALID_METADATA~;
-		FetchGithub source = {
-			.owner = github.get_string("owner")!!.copy(allocator),
-			.repo = github.get_string("repo")!!.copy(allocator),
-			.rev = github.get_string("rev")!!.copy(allocator),
-			.path = github.has_key("path") ? github.get_string("path")!!.copy(allocator) : "",
-		};
-		source.validate()!!;
+		if (!name.len || !declaration.is_map()) return INVALID_METADATA~;
+		PackageSource source = parse_source_object(allocator, declaration)!;
 		specs.push({ .name = name.copy(allocator), .source = source });
 	};
 	return specs.to_array(allocator);
+}
+
+fn LinkSpec[]? parse_links(Allocator allocator, Object* c3pm)
+{
+	List{LinkSpec} links;
+	links.init(allocator);
+	if (!c3pm.has_key("links")) return links.to_array(allocator);
+	Object* declarations = c3pm.get("links")!;
+	if (!declarations.is_map()) return INVALID_METADATA~;
+	declarations.@each_entry(; String name, Object* declaration)
+	{
+		if (!valid_library_name(name) || !declaration.is_map()) return INVALID_METADATA~;
+		LinkSpec link = {
+			.name = name.copy(allocator),
+			.c3c_target = declaration.has_key("c3cTarget")
+				? declaration.get_string("c3cTarget")!!.copy(allocator) : "none",
+			.nix_package = declaration.has_key("nixPackage")
+				? declaration.get_string("nixPackage")!!.copy(allocator) : "",
+			.for_target = declaration.has_key("forTarget")
+				? declaration.get_string("forTarget")!!.copy(allocator) : "",
+		};
+		if (declaration.has_key("mode"))
+		{
+			String mode = declaration.get_string("mode")!!;
+			if (mode != "runtime" && mode != "passthrough") return INVALID_METADATA~;
+			link.passthrough = mode == "passthrough";
+		}
+		if (declaration.has_key("source"))
+		{
+			link.source = parse_source_object(allocator, declaration)!;
+			link.has_source = true;
+		}
+		if (link.c3c_target != "none" && !link.has_source) return MISSING_SOURCE~;
+		if (link.nix_package.starts_with("path:"))
+		{
+			validate_nix_import_path(link.nix_package[5..])!;
+		}
+		else if (link.nix_package.len && !valid_nix_attribute(link.nix_package))
+		{
+			return INVALID_NIX_ATTRIBUTE~;
+		}
+		links.push(link);
+	};
+	return links.to_array(allocator);
+}
+
+fn ToolchainConfig? parse_toolchain(Allocator allocator, Object* c3pm)
+{
+	ToolchainConfig config = { .nixpkgs = "github:NixOS/nixpkgs/nixpkgs-unstable" };
+	if (!c3pm.has_key("toolchain")) return config;
+	Object* declaration = c3pm.get("toolchain")!;
+	if (!declaration.is_map()) return INVALID_METADATA~;
+	if (declaration.has_key("c3c")) config.c3c_version = declaration.get_string("c3c")!.copy(allocator);
+	if (declaration.has_key("nixpkgs")) config.nixpkgs = declaration.get_string("nixpkgs")!.copy(allocator);
+	if (!config.nixpkgs.len) return INVALID_METADATA~;
+	return config;
 }
 
 fn String[]? parse_nix_class(Allocator allocator, Object* nix, String key)
@@ -101,12 +186,7 @@ fn String[]? parse_nix_imports(Allocator allocator, Object* nix)
 	imports.init(allocator);
 	if (!nix.has_key("imports")) return imports.to_array(allocator);
 	Object* value = nix.get("imports")!;
-	if (value.is_string())
-	{
-		validate_nix_import_path(value.s)!;
-		imports.push(value.s.copy(allocator));
-	}
-	else if (value.is_array())
+	if (value.is_array())
 	{
 		for (sz i = 0; i < value.len(); i++)
 		{
@@ -156,6 +236,8 @@ fn Metadata? parse_metadata(Allocator allocator, String text, String target, boo
 	{
 		result.sources = parse_sources(allocator, c3pm)!;
 		result.nix = parse_nix_inputs(allocator, c3pm)!;
+		result.links = parse_links(allocator, c3pm)!;
+		result.toolchain = parse_toolchain(allocator, c3pm)!;
 	}
 	else
 	{
@@ -164,6 +246,8 @@ fn Metadata? parse_metadata(Allocator allocator, String text, String target, boo
 		result.sources = empty_sources.to_array(allocator);
 		Object* empty = object::new_obj(allocator);
 		result.nix = parse_nix_inputs(allocator, empty)!;
+		result.links = parse_links(allocator, empty)!;
+		result.toolchain = parse_toolchain(allocator, empty)!;
 	}
 	return result;
 }
@@ -174,6 +258,22 @@ fn Metadata? parse_project(Allocator allocator, String text, String target)
 	Object* root = json::parse(tmem, text, JSONC)!;
 	if (!root.is_map()) return INVALID_METADATA~;
 	project.targets = parse_project_targets(allocator, root)!;
+	// Every project target must be reproducible from one generated environment.
+	// Keep target selection in project.json, but resolve the union here.
+	List{String} dependencies;
+	dependencies.init(allocator);
+	append_unique(&dependencies, allocator, parse_string_array(tmem, root, "dependencies")!);
+	if (root.has_key("targets"))
+	{
+		Object* targets = root.get("targets")!;
+		targets.@each_entry(; String name, Object* declaration)
+		{
+			if (!declaration.is_map()) return INVALID_METADATA~;
+			append_unique(&dependencies, allocator,
+				parse_string_array(tmem, declaration, "dependencies")!!);
+		};
+	}
+	project.dependencies = dependencies.to_array(allocator);
 	return project;
 }
 

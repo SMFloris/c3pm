@@ -7,7 +7,7 @@ import std::io::path;
 struct PendingNode
 {
 	String name;
-	FetchGithub source;
+	PackageSource source;
 	String[] dependencies;
 	NixInputs nix;
 	bool loaded;
@@ -36,7 +36,7 @@ fn Graph pending_graph(Allocator allocator, List{PendingNode}* pending, String[]
 }
 
 fn void? add_pending(Allocator allocator, List{PendingNode}* pending,
-	String name, FetchGithub source)
+	String name, PackageSource source)
 {
 	if (try index = pending_index(pending, name))
 	{
@@ -71,7 +71,7 @@ fn Graph? resolve_graph(Allocator allocator, Metadata* project, String target,
 			if (pending[i].loaded) continue;
 			PendingNode* node = &pending[i];
 			String input_name = source_input_name(tmem, node.source);
-			String manifest_json = runner.read_manifest(tmem, discovery_dir, input_name, node.source.path)!;
+			String manifest_json = runner.read_manifest(tmem, discovery_dir, input_name, node.source.subdir)!;
 			Metadata manifest = parse_manifest(allocator, manifest_json, target)!;
 			if (manifest.provides != node.name) return PROVIDES_MISMATCH~;
 			validate_metadata_sources(&manifest)!;

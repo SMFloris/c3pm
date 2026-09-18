@@ -1,5 +1,7 @@
 module c3pm;
 
+import std::io::path;
+
 fn bool valid_github_identifier(String value)
 {
 	if (!value.len || value == "." || value == "..") return false;
@@ -19,14 +21,28 @@ fn void? validate_source_path(String path)
 	{
 		if (!part.len || part == "." || part == "..") return INVALID_SOURCE_PATH~;
 	}
+	foreach (char c : path) if (c < 0x20 || c == '"') return INVALID_SOURCE_PATH~;
 	return;
 }
 
-fn void? FetchGithub.validate(&self)
+fn void? PackageSource.validate(&self)
 {
-	if (!valid_github_identifier(self.owner) || !valid_github_identifier(self.repo)) return INVALID_SOURCE~;
-	if (!valid_git_ref(self.rev)) return INVALID_SOURCE~;
-	validate_source_path(self.path)!;
+	if (!self.location.len || self.location.trim() != self.location) return INVALID_SOURCE~;
+	if (self.kind == GITHUB)
+	{
+		String[] parts = self.location.tsplit("/");
+		if (parts.len != 2 || !valid_github_identifier(parts[0]) ||
+			!valid_github_identifier(parts[1])) return INVALID_SOURCE~;
+	}
+	if (self.kind == GIT_HTTPS && !self.location.starts_with("https://")) return INVALID_SOURCE~;
+	if (self.kind == GIT_SSH && !self.location.starts_with("ssh://")) return INVALID_SOURCE~;
+	if (self.kind == ARCHIVE_HTTPS && !self.location.starts_with("https://")) return INVALID_SOURCE~;
+	if ((self.kind == GIT_HTTPS || self.kind == GIT_SSH) &&
+		(self.location.contains("?") || self.location.contains("#"))) return INVALID_SOURCE~;
+	if ((self.kind == GITHUB || self.kind == GIT_HTTPS || self.kind == GIT_SSH) &&
+		!valid_git_ref(self.rev)) return INVALID_SOURCE~;
+	if (self.kind == ARCHIVE_HTTPS && !self.sha256.starts_with("sha256-")) return INVALID_SOURCE~;
+	validate_source_path(self.subdir)!;
 	return;
 }
 
@@ -45,47 +61,77 @@ fn bool valid_git_ref(String rev)
 	return true;
 }
 
-fn FetchGithub? parse_github_uri(Allocator allocator, String uri)
+// Stable FNV-1a is deliberately used only for generated Nix identifiers. It is
+// not a source hash; Nix owns source hashing and records it in flake.lock.
+fn PackageSource? parse_source(Allocator allocator, String value, String rev,
+	String subdir, String sha256)
 {
-	const String PREFIX = "github://";
-	if (!uri.starts_with(PREFIX)) return INVALID_GITHUB_URI~;
-	String rest = uri[PREFIX.len..];
-	sz hash = rest.index_of("#")!;
-	if (hash == 0 || hash + 1 >= rest.len || rest[hash + 1..].contains("#")) return INVALID_GITHUB_URI~;
-	String locator = rest[:hash];
-	String rev = rest[hash + 1..];
-	sz at = locator.index_of("@")!;
-	if (at == 0 || at + 1 >= locator.len || locator[at + 1..].contains("@")) return INVALID_GITHUB_URI~;
-	String owner = locator[:at];
-	String repo_and_path = locator[at + 1..];
-	String repo;
-	String path;
-	if (try slash = repo_and_path.index_of("/"))
+	foreach (char c : value) if (c < 0x20 || c == '"' || c == '\\') return INVALID_SOURCE~;
+	PackageSource source = { .rev = rev.copy(allocator), .subdir = subdir.copy(allocator),
+		.sha256 = sha256.copy(allocator) };
+	if (value.starts_with("github:"))
 	{
-		repo = repo_and_path[:slash];
-		path = repo_and_path[slash + 1..];
+		source.kind = GITHUB;
+		source.location = value[7..].copy(allocator);
 	}
-	else
+	else if (value.starts_with("git+https://"))
 	{
-		repo = repo_and_path;
-		path = "";
+		source.kind = GIT_HTTPS;
+		source.location = value[4..].copy(allocator);
 	}
-	FetchGithub source = {
-		.owner = owner.copy(allocator),
-		.repo = repo.copy(allocator),
-		.rev = rev.copy(allocator),
-		.path = path.copy(allocator),
-	};
+	else if (value.starts_with("git+ssh://"))
+	{
+		source.kind = GIT_SSH;
+		source.location = value[4..].copy(allocator);
+	}
+	else if (value.starts_with("archive+https://"))
+	{
+		source.kind = ARCHIVE_HTTPS;
+		source.location = value[8..].copy(allocator);
+	}
+	else if (value.starts_with("path:"))
+	{
+		source.kind = FOLDER;
+		source.location = value[5..].copy(allocator);
+	}
+	else { return INVALID_SOURCE~; }
 	source.validate()!;
 	return source;
 }
 
-// Stable FNV-1a is deliberately used only for generated Nix identifiers. It is
-// not a source hash; Nix owns source hashing and records it in flake.lock.
-fn ulong source_identity_hash(FetchGithub source)
+fn String source_kind_name(SourceKind kind)
+{
+	switch (kind)
+	{
+		case GITHUB: return "github";
+		case GIT_HTTPS: return "git+https";
+		case GIT_SSH: return "git+ssh";
+		case ARCHIVE_HTTPS: return "archive+https";
+		case FOLDER: return "path";
+	}
+}
+
+fn String source_url(Allocator allocator, PackageSource source)
+{
+	switch (source.kind)
+	{
+		case GITHUB: return string::format(allocator, "github:%s/%s", source.location, source.rev);
+		case GIT_HTTPS: return string::format(allocator, "git+%s?ref=%s", source.location, source.rev);
+		case GIT_SSH: return string::format(allocator, "git+%s?ref=%s", source.location, source.rev);
+		case ARCHIVE_HTTPS: return string::format(allocator, "tarball+%s", source.location);
+		case FOLDER:
+			if (source.location.is_absolute_path()!!) { return string::format(allocator, "path:%s", source.location); }
+			if (!source.base.len) { return string::format(allocator, "path:%s", source.location); }
+			Path absolute = string::format(tmem, "%s/%s", source.base, source.location)
+				.to_tpath()!!.to_absolute_path(tmem)!!;
+			return string::format(allocator, "path:%s", (String)absolute);
+	}
+}
+
+fn ulong source_identity_hash(PackageSource source)
 {
 	ulong hash = 14695981039346656037;
-	String[] fields = { source.owner, source.repo, source.rev };
+	String[] fields = { source_kind_name(source.kind), source.location, source.rev, source.sha256, source.base };
 	foreach (field : fields)
 	{
 		foreach (char c : field)
@@ -99,15 +145,15 @@ fn ulong source_identity_hash(FetchGithub source)
 	return hash;
 }
 
-fn String source_input_name(Allocator allocator, FetchGithub source)
+fn String source_input_name(Allocator allocator, PackageSource source)
 {
 	@stack_mem(256; Allocator smem)
 	{
 		DString out = dstring::new_with_capacity(smem, 64);
 		out.append("c3pm_src_");
-		append_nix_identifier_part(&out, source.owner);
+		append_nix_identifier_part(&out, source_kind_name(source.kind));
 		out.append("_");
-		append_nix_identifier_part(&out, source.repo);
+		append_nix_identifier_part(&out, source.location);
 		out.appendf("_%08x", (uint)source_identity_hash(source));
 		return out.str_view().copy(allocator);
 	};
@@ -148,7 +194,15 @@ fn void? validate_nix_import_path(String import_path)
 	{
 		if (!part.len || part == "." || part == "..") return INVALID_SOURCE_PATH~;
 	}
+	foreach (char c : import_path) if (c < 0x20 || c == '"') return INVALID_SOURCE_PATH~;
 	return;
+}
+
+fn bool safe_metadata_value(String value)
+{
+	if (!value.len) return false;
+	foreach (char c : value) if (c < 0x20 || c == '"' || c == '\\') return false;
+	return true;
 }
 
 fn String nix_import_relative_path(String import_path)

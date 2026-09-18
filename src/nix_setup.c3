@@ -136,7 +136,7 @@ fn NixBackendConfig? load_nix_backend_config(Allocator allocator)
 	NixBackendConfig config = parse_nix_backend_config(allocator, contents)!;
 	if (!executable_file(config.executable))
 	{
-		io::printfn("Configured Nix executable is unavailable:\n  %s\n\nSelect a backend again with `c3pm nix use`.",
+		io::printfn("Configured Nix executable is unavailable:\n  %s\n\nSelect it again with `c3pm toolchain nix use`.",
 			config.executable);
 		return INVALID_NIX_CONFIG~;
 	}
@@ -200,9 +200,9 @@ fn void print_missing_nix_backend()
 	io::printn(
 		"No Nix backend is available.\n\n"
 		"Install Nix and ensure `nix` is on PATH, or use the managed portable backend:\n\n"
-		"  c3pm nix use portable\n\n"
+		"  c3pm toolchain nix use portable\n\n"
 		"To inspect backend selection:\n\n"
-		"  c3pm nix status"
+		"  c3pm toolchain nix status"
 	);
 }
 
@@ -271,7 +271,7 @@ fn int? use_system_nix()
 	io::printn(
 		"Nix was not found on PATH.\n\n"
 		"Install Nix and try again, or use:\n\n"
-		"  c3pm nix use portable"
+		"  c3pm toolchain nix use portable"
 	);
 	return 1;
 }
@@ -311,23 +311,23 @@ fn void print_nix_help()
 {
 	io::printn(
 		"Usage:\n"
-		"  c3pm nix status\n"
-		"  c3pm nix use system\n"
-		"  c3pm nix use portable\n"
-		"  c3pm nix use PATH\n"
-		"  c3pm nix reset"
+		"  c3pm toolchain nix status\n"
+		"  c3pm toolchain nix use system\n"
+		"  c3pm toolchain nix use portable\n"
+		"  c3pm toolchain nix use PATH\n"
+		"  c3pm toolchain nix reset"
 	);
 }
 
-fn int? run_nix_command(String[] args)
+fn int? run_toolchain_nix_command(String[] args)
 {
-	if (args.len == 3 && args[2] == "status") return run_nix_status_command();
-	if (args.len == 3 && args[2] == "reset") return reset_nix_backend();
-	if (args.len == 4 && args[2] == "use")
+	if (args.len == 4 && args[3] == "status") return run_nix_status_command();
+	if (args.len == 4 && args[3] == "reset") return reset_nix_backend();
+	if (args.len == 5 && args[3] == "use")
 	{
-		if (args[3] == "system") return use_system_nix();
-		if (args[3] == "portable") return use_portable_nix();
-		return use_nix_path(args[3]);
+		if (args[4] == "system") return use_system_nix();
+		if (args[4] == "portable") return use_portable_nix();
+		return use_nix_path(args[4]);
 	}
 	print_nix_help();
 	return 2;
@@ -350,7 +350,7 @@ fn PortableNixRunner? select_nix_runner(Allocator allocator)
 		NixBackendConfig? loaded = load_nix_backend_config(tmem);
 		if (catch loaded)
 		{
-			io::printfn("Invalid c3pm Nix configuration:\n  %s\n\nSelect a backend again with `c3pm nix use`.",
+			io::printfn("Invalid c3pm Nix configuration:\n  %s\n\nSelect it again with `c3pm toolchain nix use`.",
 				config_path);
 			return INVALID_NIX_CONFIG~;
 		}

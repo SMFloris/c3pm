@@ -64,9 +64,12 @@ jobs:
             --prefix="c3pm-${GITHUB_REF_NAME}/" \
             --output="release/c3pm-${GITHUB_REF_NAME}-source.zip" \
             "${GITHUB_SHA}"
+          cp install.sh release/install.sh
+          chmod +x release/install.sh
           cd release
           sha256sum \
             c3pm-linux-x86_64 \
+            install.sh \
             "c3pm-${GITHUB_REF_NAME}-source.zip" \
             > SHA256SUMS
 
@@ -76,6 +79,7 @@ jobs:
         run: |
           gh release create "${GITHUB_REF_NAME}" \
             release/c3pm-linux-x86_64 \
+            release/install.sh \
             "release/c3pm-${GITHUB_REF_NAME}-source.zip" \
             release/SHA256SUMS \
             --verify-tag \

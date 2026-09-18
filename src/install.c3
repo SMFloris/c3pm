@@ -29,6 +29,23 @@ fn void? copy_project_imports(String directory, Path project_root, String[] impo
 	return;
 }
 
+fn void? copy_link_imports(String directory, Path project_root, LinkSpec[] links)
+{
+	foreach (&link : links)
+	{
+		if (link.has_source || !link.nix_package.starts_with("path:")) continue;
+		String import_path = link.nix_package[5..];
+		String relative = nix_import_relative_path(import_path);
+		String source = string::format(tmem, "%s/%s", (String)project_root, relative);
+		if (!file::is_file(source)) return INVALID_SOURCE_PATH~;
+		String destination = string::format(tmem, "%s/imports/links/%s/%s",
+			directory, link.name, relative);
+		path::mkdir(destination.path_tdirname()!, true)!;
+		file::save(destination, file::load(tmem, source)!)!;
+	}
+	return;
+}
+
 fn bool excluded_project_source_entry(String name)
 {
 	return name == ".c3pm" || name == ".git" || name == ".tools" ||
@@ -69,6 +86,7 @@ fn void? write_generated_state(String directory, Path project_root, Metadata* pr
 	path::mkdir(string::format(tmem, "%s/deps", directory), true)!;
 	copy_project_source(directory, project_root)!;
 	copy_project_imports(directory, project_root, project.nix.imports)!;
+	copy_link_imports(directory, project_root, project.links)!;
 	file::save(string::format(tmem, "%s/flake.nix", directory), generate_flake_nix(tmem, graph, project))!;
 	file::save(string::format(tmem, "%s/shell.nix", directory), generate_shell_nix(tmem, graph, project))!;
 	file::save(string::format(tmem, "%s/project.nix", directory), generate_project_nix(tmem, project))!;
@@ -88,6 +106,19 @@ fn void? validate_all_nix_inputs(NixRunner runner, String directory,
 	foreach (attr : inputs.build_inputs) runner.validate_package_attr(directory, system, attr)!;
 	foreach (attr : inputs.propagated_native_build_inputs) runner.validate_package_attr(directory, system, attr)!;
 	foreach (attr : inputs.propagated_build_inputs) runner.validate_package_attr(directory, system, attr)!;
+	return;
+}
+
+fn void? validate_link_nix_inputs(NixRunner runner, String directory,
+	String system, LinkSpec[] links)
+{
+	foreach (&link : links)
+	{
+		if (link.nix_package.len && !link.nix_package.starts_with("path:"))
+		{
+			runner.validate_package_attr(directory, system, link.nix_package)!;
+		}
+	}
 	return;
 }
 
@@ -166,7 +197,8 @@ fn void remove_stale_library_links(Path project_root, Graph* graph, String[] old
 	}
 }
 
-fn String? install_project(Allocator allocator, Path project_root, NixRunner runner)
+fn String? install_project(Allocator allocator, Path project_root, NixRunner runner,
+	bool update_nixpkgs = false)
 {
 	@pool()
 	{
@@ -176,6 +208,10 @@ fn String? install_project(Allocator allocator, Path project_root, NixRunner run
 		String target = host_c3_target()!;
 		String system = host_nix_system()!;
 		Metadata project = parse_project(allocator, project_json, target)!;
+		foreach (&source : project.sources)
+			if (source.source.kind == FOLDER) { source.source.base = root.copy(allocator); }
+		foreach (&link : project.links)
+			if (link.has_source && link.source.kind == FOLDER) { link.source.base = root.copy(allocator); }
 
 		String state_parent = string::format(tmem, "%s/.c3pm", root);
 		String current = string::format(tmem, "%s/nix", state_parent);
@@ -192,8 +228,10 @@ fn String? install_project(Allocator allocator, Path project_root, NixRunner run
 
 		Graph graph = resolve_graph(allocator, &project, target, next, runner)!;
 		write_generated_state(next, project_root, &project, &graph)!;
-		runner.lock(next)!;
+		if (update_nixpkgs) { runner.update_input(next, "nixpkgs")!; }
+		else { runner.lock(next)!; }
 		validate_all_nix_inputs(runner, next, system, &project.nix)!;
+		validate_link_nix_inputs(runner, next, system, project.links)!;
 		foreach (&node : graph.nodes) validate_all_nix_inputs(runner, next, system, &node.nix)!;
 		validate_generated_shell(runner, next, system)!;
 		String flake_ref = string::format(tmem, "path:%s#c3pmLibs", next);

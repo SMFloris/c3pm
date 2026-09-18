@@ -56,6 +56,11 @@ fn void? FakeNixRunner.lock(&self, String flake_dir) @dynamic
 	return;
 }
 
+fn void? FakeNixRunner.update_input(&self, String flake_dir, String input_name) @dynamic
+{
+	return self.lock(flake_dir);
+}
+
 fn String? FakeNixRunner.eval_json(&self, Allocator allocator, String flake_dir,
 	String expression) @dynamic => `"/nix/store/c3pm-test-shell.drv"`.copy(allocator);
 
@@ -86,33 +91,42 @@ fn String? FakeNixRunner.read_manifest(&self, Allocator allocator, String flake_
 	return NOT_FOUND~;
 }
 
-fn void github_uri_parser_test() @test
+fn String? FakeNixRunner.read_source_json(&self, Allocator allocator, String flake_dir,
+	String input_name, String relative_path) @dynamic
+{
+	foreach (i, path_value : self.paths)
+	{
+		if (path_value == relative_path) return self.manifests[i].copy(allocator);
+	}
+	return NOT_FOUND~;
+}
+
+fn void github_source_parser_test() @test
 {
 	test::@check(valid_github_identifier("someone"));
 	test::@check(valid_github_identifier("c3-libs"));
 	test::@check(valid_git_ref("main"));
 	validate_source_path("logging/logging.c3l")!!;
-	FetchGithub direct = { .owner = "someone", .repo = "c3-libs", .rev = "main", .path = "logging/logging.c3l" };
+	PackageSource direct = { .kind = GITHUB, .location = "someone/c3-libs", .rev = "main", .subdir = "logging/logging.c3l" };
 	direct.validate()!!;
-	FetchGithub source = parse_github_uri(tmem,
-		"github://someone@c3-libs/logging/logging.c3l#main")!!;
-	test::eq("someone", source.owner);
-	test::eq("c3-libs", source.repo);
-	test::eq("logging/logging.c3l", source.path);
+	PackageSource source = parse_source(tmem, "github:someone/c3-libs", "main",
+		"logging/logging.c3l", "")!!;
+	test::eq("someone/c3-libs", source.location);
+	test::eq("logging/logging.c3l", source.subdir);
 	test::eq("main", source.rev);
 }
 
-fn void github_uri_rejects_unsafe_paths_test() @test
+fn void github_source_rejects_unsafe_paths_test() @test
 {
-	test::@error(parse_github_uri(tmem, "github://someone@repo/../secret.c3l#main"), INVALID_SOURCE_PATH);
-	test::@error(parse_github_uri(tmem, "github://someone@repo//foo.c3l#main"), INVALID_SOURCE_PATH);
-	test::@error(parse_github_uri(tmem, "github://someone@repo/foo.c3l#bad ref"), INVALID_SOURCE);
+	test::@error(parse_source(tmem, "github:someone/repo", "main", "../secret.c3l", ""), INVALID_SOURCE_PATH);
+	test::@error(parse_source(tmem, "github:someone/repo", "main", "/foo.c3l", ""), INVALID_SOURCE_PATH);
+	test::@error(parse_source(tmem, "github:someone/repo", "bad ref", "foo.c3l", ""), INVALID_SOURCE);
 }
 
 fn void source_identity_ignores_library_path_test() @test
 {
-	FetchGithub one = parse_github_uri(tmem, "github://u@repo/foo.c3l#v1")!!;
-	FetchGithub two = parse_github_uri(tmem, "github://u@repo/bar.c3l#v1")!!;
+	PackageSource one = parse_source(tmem, "github:u/repo", "v1", "foo.c3l", "")!!;
+	PackageSource two = parse_source(tmem, "github:u/repo", "v1", "bar.c3l", "")!!;
 	test::@check(source_identity_equal(one, two));
 	test::eq(source_input_name(tmem, one), source_input_name(tmem, two));
 }
@@ -139,8 +153,8 @@ fn void jsonc_metadata_and_target_selection_test() @test
   },
   "vendor": { "c3pm": {
     "c3": { "dependencies": {
-      "base": { "fetchGithub": { "owner": "a", "repo": "base", "rev": "v1" } },
-      "xxhash": { "fetchGithub": { "owner": "a", "repo": "xx", "rev": "main", "path": "xxhash.c3l" } }
+      "base": { "source": "github", "owner": "a", "repository": "base", "rev": "v1" },
+      "xxhash": { "source": "github", "owner": "a", "repository": "xx", "rev": "main", "subdir": "xxhash.c3l" }
     } },
     "nix": {
       "nativeBuildInputs": ["pkg-config"],
@@ -168,7 +182,7 @@ fn void metadata_requires_each_dependency_source_test() @test
 
 fn void cycle_reports_complete_path_test() @test
 {
-	FetchGithub source = { .owner = "u", .repo = "r", .rev = "v1" };
+	PackageSource source = { .kind = GITHUB, .location = "u/r", .rev = "v1" };
 	GraphNode[] nodes = {
 		{ .name = "foo", .source = source, .dependencies = { "bar" } },
 		{ .name = "bar", .source = source, .dependencies = { "baz" } },
@@ -184,7 +198,7 @@ fn void cycle_reports_complete_path_test() @test
 
 fn void diamond_closure_is_unique_test() @test
 {
-	FetchGithub source = { .owner = "u", .repo = "r", .rev = "v1" };
+	PackageSource source = { .kind = GITHUB, .location = "u/r", .rev = "v1" };
 	GraphNode[] nodes = {
 		{ .name = "a", .source = source, .dependencies = { "shared" } },
 		{ .name = "b", .source = source, .dependencies = { "shared" } },
@@ -197,10 +211,10 @@ fn void diamond_closure_is_unique_test() @test
 
 fn void nix_generation_is_deterministic_and_deduplicates_sources_test() @test
 {
-	FetchGithub shared = { .owner = "someone", .repo = "c3-libs", .rev = "main" };
+	PackageSource shared = { .kind = GITHUB, .location = "someone/c3-libs", .rev = "main" };
 	GraphNode[] nodes = {
 		{ .name = "zeta", .source = shared, .dependencies = { "alpha" } },
-		{ .name = "alpha", .source = { .owner = "someone", .repo = "c3-libs", .rev = "main", .path = "alpha.c3l" } },
+		{ .name = "alpha", .source = { .kind = GITHUB, .location = "someone/c3-libs", .rev = "main", .subdir = "alpha.c3l" } },
 	};
 	Graph graph = { .nodes = nodes, .roots = { "zeta" } };
 	Metadata project;
@@ -219,10 +233,10 @@ fn void recursive_resolution_uses_nix_runner_test() @test
 	`{
   "dependencies": ["logging"],
   "vendor": { "c3pm": { "c3": { "dependencies": {
-    "logging": { "fetchGithub": {
-      "owner": "someone", "repo": "c3-libs", "rev": "main",
-      "path": "logging/logging.c3l"
-    } }
+    "logging": {
+      "source": "github", "owner": "someone", "repository": "c3-libs",
+      "rev": "main", "subdir": "logging/logging.c3l"
+    }
   } } } }
 }`,
 		"linux-x64")!!;
@@ -232,9 +246,10 @@ fn void recursive_resolution_uses_nix_runner_test() @test
 			`{
   "provides": "logging", "dependencies": ["xxhash"],
   "vendor": { "c3pm": { "c3": { "dependencies": {
-    "xxhash": { "fetchGithub": {
-      "owner": "someone", "repo": "xxhash.c3", "rev": "v1", "path": "xxhash.c3l"
-    } }
+    "xxhash": {
+      "source": "github", "owner": "someone", "repository": "xxhash.c3",
+      "rev": "v1", "subdir": "xxhash.c3l"
+    }
   } } } }
 }`,
 			`{"provides":"xxhash","dependencies":[]}`,
@@ -278,9 +293,9 @@ fn void jsonc_editor_preserves_comments_during_add_remove_test() @test
   "dependency-search-paths": [ "vendor" ],
   "unrelated": { "answer": 42 },
 }`;
-	FetchGithub source = {
-		.owner = "someone", .repo = "c3-libs", .rev = "main",
-		.path = "logging/logging.c3l",
+	PackageSource source = {
+		.kind = GITHUB, .location = "someone/c3-libs", .rev = "main",
+		.subdir = "logging/logging.c3l",
 	};
 	String edited = add_array_string(tmem, original, "dependencies", "logging")!!;
 	edited = add_array_string(tmem, edited, "dependency-search-paths", "lib")!!;
@@ -288,10 +303,14 @@ fn void jsonc_editor_preserves_comments_during_add_remove_test() @test
 	test::@check(edited.contains("// Keep this project comment."));
 	test::@check(edited.contains("// and this dependency comment"));
 	test::@check(edited.contains("\"unrelated\": { \"answer\": 42 }"));
+	test::@check(edited.contains(`"source": "github"`));
+	test::@check(edited.contains(`"owner": "someone"`));
+	test::@check(edited.contains(`"repository": "c3-libs"`));
+	test::@check(!edited.contains(`"location"`));
 	Metadata project = parse_project(tmem, edited, "linux-x64")!!;
 	test::eq(2, project.dependencies.len);
 	test::eq("logging", project.dependencies[1]);
-	test::eq("someone", project.find_source("logging")!!.source.owner);
+	test::eq("someone/c3-libs", project.find_source("logging")!!.source.location);
 
 	String removed = remove_array_string(tmem, edited, "dependencies", "logging")!!;
 	removed = remove_source_declaration(tmem, removed, "logging")!!;
@@ -320,17 +339,18 @@ fn void add_and_remove_are_transactional_and_preserve_jsonc_test() @test
 		.paths = { "logging/logging.c3l" },
 		.manifests = { `{"provides":"logging","dependencies":[]}` },
 	};
-	String name = add_dependency(tmem, root,
-		"github://someone@c3-libs/logging/logging.c3l#main", (NixRunner)&fake)!!;
+	PackageSource source = parse_source(tmem, "github:someone/c3-libs", "main",
+		"logging/logging.c3l", "")!!;
+	String name = add_dependency(tmem, root, source, "", "", (NixRunner)&fake)!!;
 	test::eq("logging", name);
 	String added = (String)file::load(tmem, project_path)!!;
 	test::@check(added.contains("// This must survive package operations."));
 	test::@check(added.contains("\"unrelated\": true"));
 	Metadata with_dependency = parse_project(tmem, added, "linux-x64")!!;
 	test::eq("logging", with_dependency.dependencies[0]);
-	test::eq("someone", with_dependency.find_source("logging")!!.source.owner);
+	test::eq("someone/c3-libs", with_dependency.find_source("logging")!!.source.location);
 
-	remove_dependency(tmem, root, "logging", (NixRunner)&fake)!!;
+	remove_dependency(tmem, root, "logging", "", (NixRunner)&fake)!!;
 	String removed = (String)file::load(tmem, project_path)!!;
 	test::@check(removed.contains("// This must survive package operations."));
 	Metadata without_dependency = parse_project(tmem, removed, "linux-x64")!!;
@@ -343,7 +363,7 @@ fn void nix_imports_are_parsed_validated_and_generated_test() @test
 	`{
   "provides": "custom",
   "vendor": { "c3pm": { "nix": {
-    "imports": "./package.nix",
+    "imports": ["./package.nix"],
     "buildInputs": ["zlib"]
   } } }
 }`,
@@ -352,7 +372,7 @@ fn void nix_imports_are_parsed_validated_and_generated_test() @test
 	test::eq("./package.nix", manifest.nix.imports[0]);
 	GraphNode node = {
 		.name = "custom",
-		.source = { .owner = "owner", .repo = "repo", .rev = "main", .path = "libs/custom.c3l" },
+		.source = { .kind = GITHUB, .location = "owner/repo", .rev = "main", .subdir = "libs/custom.c3l" },
 		.nix = manifest.nix,
 	};
 	String generated = generate_dependency_nix(tmem, &node);
@@ -361,7 +381,7 @@ fn void nix_imports_are_parsed_validated_and_generated_test() @test
 		`pkgs.callPackage (sources."custom" + "/libs/custom.c3l/package.nix") {}`));
 
 	test::@error(parse_manifest(tmem,
-		`{"provides":"bad","vendor":{"c3pm":{"nix":{"imports":"../escape.nix"}}}}`,
+		`{"provides":"bad","vendor":{"c3pm":{"nix":{"imports":["../escape.nix"]}}}}`,
 		"linux-x64"), INVALID_SOURCE_PATH);
 }
 
@@ -456,4 +476,109 @@ fn void bundle_materializes_regular_atomic_output_test() @test
 	test::eq("bundle", (String)file::load(tmem, output)!!);
 	test::@check(!file::is_file(string::format(tmem, "%s/dist/.server.tmp", scratch)));
 	test::@check(!path::exists(string::format(tmem, "%s/.c3pm/bundle.next", scratch).to_tpath()!!));
+}
+
+fn void generalized_source_syntax_test() @test
+{
+	PackageSource github = parse_source(tmem, "github:owner/repo", "v1", "lib/foo.c3l", "")!!;
+	test::eq(SourceKind.GITHUB, github.kind);
+	test::eq("owner/repo", github.location);
+	test::eq("lib/foo.c3l", github.subdir);
+	test::eq("github:owner/repo/v1", source_url(tmem, github));
+
+	PackageSource https = parse_source(tmem, "git+https://example.com/a/repo.git",
+		"main", "", "")!!;
+	test::eq(SourceKind.GIT_HTTPS, https.kind);
+	test::@check(source_url(tmem, https).starts_with("git+https://"));
+	PackageSource ssh = parse_source(tmem, "git+ssh://git@example.com/a/repo.git",
+		"deadbeef", "", "")!!;
+	test::eq(SourceKind.GIT_SSH, ssh.kind);
+	PackageSource archive = parse_source(tmem, "archive+https://example.com/a.tar.gz",
+		"", "", "sha256-test")!!;
+	test::eq(SourceKind.ARCHIVE_HTTPS, archive.kind);
+	test::eq("tarball+https://example.com/a.tar.gz", source_url(tmem, archive));
+	PackageSource folder = parse_source(tmem, "path:../local", "", "", "")!!;
+	test::eq(SourceKind.FOLDER, folder.kind);
+	test::@error(parse_source(tmem, "archive+https://example.com/a.tar.gz", "", "", ""),
+		INVALID_SOURCE);
+	Metadata flat = parse_project(tmem,
+		`{"dependencies":["foo"],"vendor":{"c3pm":{"c3":{"dependencies":{"foo":{"source":"github","owner":"owner","repository":"repo","rev":"v1"}}}}}}`,
+		"linux-x64")!!;
+	test::eq("owner/repo", flat.find_source("foo")!!.source.location);
+}
+
+fn void superseded_metadata_shapes_are_rejected_test() @test
+{
+	test::@error(parse_project(tmem,
+		`{"dependencies":["foo"],"vendor":{"c3pm":{"c3":{"dependencies":{"foo":{"fetchGithub":{"owner":"owner","repo":"repo","rev":"v1"}}}}}}}`,
+		"linux-x64"), INVALID_METADATA);
+	test::@error(parse_project(tmem,
+		`{"dependencies":["foo"],"vendor":{"c3pm":{"c3":{"dependencies":{"foo":{"source":{"type":"github","location":"owner/repo","rev":"v1"}}}}}}}`,
+		"linux-x64"), INVALID_METADATA);
+	test::@error(parse_manifest(tmem,
+		`{"provides":"foo","vendor":{"c3pm":{"nix":{"imports":"./package.nix"}}}}`,
+		"linux-x64"), INVALID_METADATA);
+}
+
+fn void toolchain_and_link_metadata_generation_test() @test
+{
+	String json =
+	`{
+  "dependencies": [],
+  "targets": { "server": { "type": "executable" } }
+}`;
+	json = set_toolchain_value(tmem, json, "c3c", "0.8.3")!!;
+	json = set_toolchain_value(tmem, json, "nixpkgs",
+		"github:NixOS/nixpkgs/nixos-24.11")!!;
+	LinkSpec native = {
+		.name = "custom",
+		.c3c_target = "none",
+		.nix_package = "path:./nix/custom.nix",
+	};
+	json = add_array_string_at(tmem, json, "linked-libraries", "custom", "server")!!;
+	json = add_link_declaration(tmem, json, native)!!;
+	Metadata project = parse_project(tmem, json, "linux-x64")!!;
+	test::eq("0.8.3", project.toolchain.c3c_version);
+	test::eq("github:NixOS/nixpkgs/nixos-24.11", project.toolchain.nixpkgs);
+	test::eq(1, project.links.len);
+	test::eq("path:./nix/custom.nix", project.links[0].nix_package);
+	Graph graph;
+	String flake = generate_flake_nix(tmem, &graph, &project);
+	String project_nix = generate_project_nix(tmem, &project);
+	test::@check(flake.contains(`nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11"`));
+	test::@check(project_nix.contains(`c3cVersion = "0.8.3"`));
+	test::@check(project_nix.contains(
+		`import (./imports/links/custom/nix/custom.nix) { inherit pkgs; }`));
+	json = remove_array_string_at(tmem, json, "linked-libraries", "custom", "server")!!;
+	json = remove_link_declaration(tmem, json, "custom")!!;
+	project = parse_project(tmem, json, "linux-x64")!!;
+	test::eq(0, project.links.len);
+}
+
+fn void linked_c3_project_generation_test() @test
+{
+	PackageSource source = parse_source(tmem, "git+ssh://git@example.com/acme/protocol.git",
+		"v1", "project", "")!!;
+	LinkSpec link = {
+		.name = "protocol",
+		.source = source,
+		.has_source = true,
+		.c3c_target = "protocol-static",
+		.nix_package = "path:./package.nix",
+		.passthrough = true,
+		.for_target = "server",
+	};
+	LinkSpec[] links = { link };
+	Metadata project = { .links = links, .toolchain = { .c3c_version = "0.8.3",
+		.nixpkgs = "github:NixOS/nixpkgs/nixpkgs-unstable" } };
+	Graph graph;
+	String flake = generate_flake_nix(tmem, &graph, &project);
+	String shell = generate_shell_nix(tmem, &graph, &project);
+	String project_nix = generate_project_nix(tmem, &project);
+	test::@check(flake.contains("git+ssh://git@example.com/acme/protocol.git?ref=v1"));
+	test::@check(shell.contains(`target = "protocol-static"`));
+	test::@check(shell.contains(`c3cVersion = "0.8.3"`));
+	test::@check(project_nix.contains(`linkedProjects."protocol"`));
+	test::@check(project_nix.contains(
+		`import (sources."protocol" + "/project/package.nix") { inherit pkgs; }`));
 }

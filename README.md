@@ -1,27 +1,56 @@
 # c3pm - C3 Package Manager
 
-`c3pm` is a C3 package manager backed by Nix. C3 metadata describes the logical
-dependency graph, while `vendor.c3pm` attributes in both projects and libs, supply source and native-package metadata,
-that c3pm uses to generate the deterministic Nix environment.
+`c3pm` is a C3 package manager backed by Nix. Standard C3 metadata describes
+the logical dependency graph. The `vendor.c3pm` extension in `project.json`
+and library `manifest.json` files supplies source, toolchain, and native-package
+metadata. From those inputs, c3pm generates a reproducible Nix environment.
 
-The bootstrap implementation is written in C3 and currently targets C3 0.8.3.
+c3pm is written in C3 and currently targets C3 0.8.3.
 Linux x86_64 releases are standalone static executables containing only c3pm.
 The host does not need C3 or a compatible system libc. Nix remains a separate
 backend: c3pm can use a native installation or download nix-portable on demand.
 
 ## Quickstart
 
-Download the latest x86_64 release and put it on your user PATH:
+Download the installer and preview its choices before running it:
 
 ```sh
-wget \
-  https://github.com/SMFloris/c3pm/releases/latest/download/c3pm-linux-x86_64 \
-  -O c3pm
-chmod +x c3pm
-mkdir -p "$HOME/.local/bin"
-mv c3pm "$HOME/.local/bin/c3pm"
-export PATH="$HOME/.local/bin:$PATH"
+curl --fail --location \
+  https://github.com/SMFloris/c3pm/releases/latest/download/install.sh \
+  --output install.sh
+sh install.sh --dry-run
+sh install.sh
 ```
+
+The installer supports Linux x86_64. It installs any missing bootstrap tools,
+installs and verifies the latest c3pm release, and selects a Nix backend. It
+uses an existing Nix installation when one is available. Otherwise it chooses
+the multi-user daemon on compatible systemd hosts and the single-user install
+elsewhere. Root environments without a compatible daemon use nix-portable.
+
+Useful installer options:
+
+```sh
+# Install a particular release to a custom directory.
+sh install.sh --version v0.1.0 --prefix "$HOME/bin"
+
+# Let c3pm manage nix-portable instead of installing system Nix.
+sh install.sh --nix portable
+
+# Install only c3pm and configure Nix later.
+sh install.sh --nix none
+
+# Preview every choice without changing the machine.
+sh install.sh --dry-run
+```
+
+Use `--yes` for unattended installation and `--no-modify-path` to leave
+`~/.profile` untouched. Run `sh install.sh --help` for all options and their
+environment-variable equivalents. The installer supports `apt`, `dnf`/`yum`,
+`pacman`, `zypper`, and `apk` when bootstrap packages are missing.
+
+The installer verifies the release checksum before replacing an existing c3pm
+binary. Its default destination is `$HOME/.local/bin/c3pm`.
 
 Try the SQLite todo example:
 
@@ -29,42 +58,43 @@ Try the SQLite todo example:
 git clone https://github.com/SMFloris/c3pm.git
 cd c3pm/examples/sqlite-example
 
-# Skip this when native Nix is already available on PATH.
-c3pm nix use portable
-
 # Resolve the C3 graph, SQLite, nixpkgs, and the development environment.
 c3pm install
 
-# Build and run inside the locked development shell.
-c3pm shell
-> c3c build
-> ./build/sqlite_example add "ship c3pm"
-> ./build/sqlite_example list
+# Build and run inside the locked development environment.
+c3pm shell -- c3c build
+c3pm shell -- ./build/sqlite_example add "ship c3pm"
+c3pm shell -- ./build/sqlite_example list
 
 # Produce dist/sqlite_example as one portable executable.
 c3pm bundle
 ./dist/sqlite_example list
 ```
 
-The portable backend is stored separately from c3pm. Its first Nix operation
-initializes nix-portable and may fetch the inputs recorded in
-`.c3pm/nix/flake.lock`. Later commands reuse that store and lock.
-
-Source builds first look for an explicitly configured Nix backend. If no
-configuration exists, c3pm automatically uses `nix` from `PATH`. When neither
-is available, c3pm explains how to select the portable backend.
+When selected, the portable backend is stored separately from c3pm. Its first
+Nix operation initializes nix-portable and may fetch the inputs recorded in
+`.c3pm/nix/flake.lock`; later commands reuse that store and lock.
 
 ## Usage
 
 Run `c3pm` from a directory containing `project.json`, or from one of its
 subdirectories. c3pm discovers the project root automatically.
 
+```text
+c3pm dep <add|remove|list> ...
+c3pm link <add|remove|list> ...
+c3pm toolchain <show|c3c|nixpkgs|nix> ...
+c3pm install
+c3pm shell [-- COMMAND...]
+c3pm bundle [TARGET] [--output PATH]
+```
+
 ### Select a Nix backend
 
 Inspect the active backend:
 
 ```sh
-c3pm nix status
+c3pm toolchain nix status
 ```
 
 The status report includes the selected backend, executable path, Nix version,
@@ -75,13 +105,13 @@ With no saved selection, c3pm automatically uses `nix` from `PATH`. Select and
 persist that executable explicitly with:
 
 ```sh
-c3pm nix use system
+c3pm toolchain nix use system
 ```
 
 If Nix is not installed, let c3pm download and select nix-portable:
 
 ```sh
-c3pm nix use portable
+c3pm toolchain nix use portable
 ```
 
 This downloads the host-architecture nix-portable `v012` executable to
@@ -91,8 +121,8 @@ This downloads the host-architecture nix-portable `v012` executable to
 To select another native Nix executable, provide its command name or path:
 
 ```sh
-c3pm nix use nix
-c3pm nix use /opt/nix/bin/nix
+c3pm toolchain nix use nix
+c3pm toolchain nix use /opt/nix/bin/nix
 ```
 
 The selected backend is recorded in `$XDG_CONFIG_HOME/c3pm/config.json`, or
@@ -101,50 +131,130 @@ commands work outside a C3 project. A saved selection takes precedence over
 automatic `nix` discovery. Return to automatic discovery with:
 
 ```sh
-c3pm nix reset
+c3pm toolchain nix reset
 ```
 
-If `c3pm nix status` cannot find any backend, it suggests installing Nix or
-running `c3pm nix use portable`.
+If `c3pm toolchain nix status` cannot find any backend, it suggests installing
+Nix or running `c3pm toolchain nix use portable`.
 
 For one-off overrides, `C3PM_NIX=/path/to/nix` selects a native Nix client and
 `C3PM_NIX_PORTABLE=/path/to/nix-portable` selects a nix-portable launcher.
 These environment variables take precedence over the saved configuration.
 
-### Add a dependency
+### Configure the project toolchain
 
 ```sh
-c3pm add github://OWNER@REPO[/PATH]#REF
+c3pm toolchain c3c set 0.8.3
+c3pm toolchain nixpkgs set github:NixOS/nixpkgs/nixpkgs-unstable
+c3pm toolchain show
+```
+
+The C3 and nixpkgs settings are project metadata. The `toolchain nix` setting
+selects the local executable used to realize that environment and is stored in
+the user configuration, not in the project. A C3 version override requires the
+selected nixpkgs revision to provide that exact compiler version.
+
+Use `c3pm toolchain c3c reset` or `c3pm toolchain nixpkgs reset` to remove a
+project override. `c3pm toolchain nixpkgs update` updates only the locked
+nixpkgs input while preserving the configured reference.
+
+### Add a C3 dependency
+
+```sh
+c3pm dep add github:OWNER/REPO --rev REF [--subdir PATH]
 ```
 
 For example:
 
 ```sh
-c3pm add github://SMFloris@c3c-vendor/libraries/sqlite3.c3l#c3pm
+c3pm dep add github:SMFloris/c3c-vendor \
+  --rev c3pm \
+  --subdir libraries/sqlite3.c3l
 ```
 
-`add` fetches the source through Nix, reads the selected `.c3l` manifest, and
-uses its `provides` value as the dependency name. It updates `project.json`,
-performs a full install, and preserves existing JSONC comments and formatting.
-The optional path identifies a `.c3l` directory inside the repository. `REF`
-may be a branch, tag, or commit and is resolved and locked by Nix.
+`dep add` fetches the source through Nix, reads the selected `.c3l` manifest,
+and uses its `provides` value as the dependency name. `--name NAME` can assert
+the expected `provides` name. The supported source forms are:
+
+| Source | Required options | Purpose |
+| --- | --- | --- |
+| `github:OWNER/REPO` | `--rev REF` | GitHub repository |
+| `git+https://HOST/PATH` | `--rev REF` | Git repository over HTTPS |
+| `git+ssh://HOST/PATH` | `--rev REF` | Git repository over SSH |
+| `archive+https://HOST/PATH` | `--sha256 sha256-...` | Fixed-output archive |
+| `path:PATH` | none | Local directory |
+
+Use `--subdir PATH` to select the `.c3l` directory inside a fetched dependency.
+All remote references are recorded in `.c3pm/nix/flake.lock`.
 
 ### Remove a dependency
 
 ```sh
-c3pm remove NAME
+c3pm dep remove NAME
 ```
 
 For example:
 
 ```sh
-c3pm remove sqlite3
+c3pm dep remove sqlite3
 ```
 
-`remove` removes a direct project dependency, recalculates reachability, and
+`dep remove` removes a direct project dependency, recalculates reachability, and
 prunes generated C3 nodes and source inputs that are no longer needed. Shared
 transitive dependencies remain available when another dependency still uses
 them.
+
+Use `--for-target TARGET` on add or remove for target-specific dependencies.
+Inspect declarations with:
+
+```sh
+c3pm dep list
+c3pm dep list --for-target server
+```
+
+### Link a native library or C3 project
+
+Link a native library supplied by nixpkgs:
+
+```sh
+c3pm link add sqlite3 --nix-package sqlite --runtime
+```
+
+A Nix file is imported with an explicit `pkgs` argument instead of being
+looked up as a nixpkgs attribute:
+
+```sh
+c3pm link add custom --nix-package path:./nix/custom.nix
+```
+
+Link a static or dynamic target from another C3 project:
+
+```sh
+c3pm link add protocol \
+  --source git+ssh://git@example.com/acme/protocol.git \
+  --rev v1.0.0 \
+  --c3c-target protocol-static \
+  --passthrough \
+  --for-target server
+```
+
+`--c3c-target none` and `--runtime` are the defaults. A selected C3 target must
+be a `static-lib` or `dynamic-lib` target in the linked project. Runtime links
+are private Nix inputs; passthrough links become propagated Nix inputs. When a
+link has a fetched source, `--nix-package path:./package.nix` resolves within
+that source and evaluates it as `import path { inherit pkgs; }`.
+
+Use `--subdir PATH` to select the linked project directory within its source.
+Remove or inspect links with:
+
+```sh
+c3pm link remove sqlite3
+c3pm link list
+c3pm link list --for-target server
+```
+
+Pass the same `--for-target TARGET` to `link remove` that was used when adding
+a target-specific link.
 
 ### Install or synchronize
 
@@ -205,16 +315,92 @@ only and produces a regular Linux executable rather than a Nix-store symlink.
 Nix computes the package's referenced runtime closure, and the pinned
 nix-portable `zstd-fast` bundler embeds it into the resulting file.
 
-## Metadata and locking
+## Current metadata format
+
+Projects and `.c3l` manifests both use `vendor.c3pm.c3.dependencies` for source
+declarations and `vendor.c3pm.nix` for native inputs. Projects can additionally
+declare `toolchain` and `links`; a manifest must include the standard C3
+`provides` field. This is the canonical dependency source form:
+
+```json
+{
+  "dependencies": ["sqlite3"],
+  "dependency-search-paths": ["lib"],
+  "vendor": {
+    "c3pm": {
+      "toolchain": {
+        "c3c": "0.8.3",
+        "nixpkgs": "github:NixOS/nixpkgs/nixpkgs-unstable"
+      },
+      "c3": {
+        "dependencies": {
+          "sqlite3": {
+            "source": "github",
+            "owner": "SMFloris",
+            "repository": "c3c-vendor",
+            "rev": "c3pm",
+            "subdir": "libraries/sqlite3.c3l"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Source declarations are flat objects. c3pm accepts these location fields:
+
+| `source` value | Location fields | Other required fields |
+| --- | --- | --- |
+| `github` | `owner`, `repository` | `rev` |
+| `git+https` | `url` beginning with `https://` | `rev` |
+| `git+ssh` | `url` beginning with `ssh://` | `rev` |
+| `archive+https` | `url` beginning with `https://` | `sha256` in SRI form |
+| `path` | `path` | none |
+
+`subdir` is optional for every source type. Only these flat source objects are
+supported.
+
+Links live alongside `c3`, `nix`, and `toolchain`:
+
+```json
+{
+  "targets": {
+    "server": {
+      "type": "executable",
+      "linked-libraries": ["protocol"]
+    }
+  },
+  "vendor": {
+    "c3pm": {
+      "links": {
+        "protocol": {
+          "source": "git+ssh",
+          "url": "ssh://git@example.com/acme/protocol.git",
+          "rev": "v1.0.0",
+          "subdir": "project",
+          "c3cTarget": "protocol-static",
+          "nixPackage": "path:./package.nix",
+          "mode": "passthrough",
+          "forTarget": "server"
+        }
+      }
+    }
+  }
+}
+```
+
+Prefer the `dep`, `link`, and `toolchain` commands over manual edits; their
+changes are transactional and preserve JSONC comments.
+
+## Locking
 
 The sole dependency lock database is `.c3pm/nix/flake.lock`. It pins nixpkgs,
-nix-portable, and every fetched C3 source. c3pm does not clone sources,
-calculate source hashes, or solve versions itself.
+nix-portable, and every fetched C3 source. c3pm delegates fetching and locking
+to Nix rather than cloning repositories or maintaining a second lock format.
 
-For complete, real-world `vendor.c3pm` examples, see the library manifests in
+For real-world library-native Nix metadata, see the manifests in
 [SMFloris/c3c-vendor](https://github.com/SMFloris/c3c-vendor/tree/c3pm/libraries).
-They demonstrate GitHub source declarations, nixpkgs inputs, transitive C3
-dependencies, and custom Nix imports for packages unavailable in nixpkgs.
 
 ## Native dependencies and Nix
 
@@ -345,7 +531,7 @@ c3c test
 ```
 
 With no saved backend, a source build automatically uses `nix` from `PATH`.
-Select a persistent native or portable backend with `c3pm nix use`, or
+Select a persistent native or portable backend with `c3pm toolchain nix use`, or
 use a one-command override in CI:
 
 ```sh

@@ -6,11 +6,13 @@ import std::os::process;
 interface NixRunner
 {
 	fn void? lock(String flake_dir);
+	fn void? update_input(String flake_dir, String input_name);
 	fn String? eval_json(Allocator allocator, String flake_dir, String expression);
 	fn String? build(Allocator allocator, String flake_ref);
 	fn void? bundle(String installable, String bundler, String output_link, String executable_name);
 	fn int? develop(String flake_ref, String[] command);
 	fn void? validate_package_attr(String flake_dir, String system, String attr);
+	fn String? read_source_json(Allocator allocator, String flake_dir, String input_name, String relative_path);
 	fn String? read_manifest(Allocator allocator, String flake_dir, String input_name, String library_path);
 }
 
@@ -72,6 +74,19 @@ fn void? PortableNixRunner.lock(&self, String flake_dir) @dynamic
 	{
 		String flake_ref = string::format(tmem, "path:%s", flake_dir);
 		String[] command = self.command(tmem, { "flake", "lock", flake_ref });
+		int status = process::run(command, process::SpawnOptions.INHERIT_ENV,
+			out: process::INHERIT, err: process::INHERIT)!;
+		if (status != 0) return NIX_FAILED~;
+	};
+	return;
+}
+
+fn void? PortableNixRunner.update_input(&self, String flake_dir, String input_name) @dynamic
+{
+	@pool()
+	{
+		String flake_ref = string::format(tmem, "path:%s", flake_dir);
+		String[] command = self.command(tmem, { "flake", "update", input_name, "--flake", flake_ref });
 		int status = process::run(command, process::SpawnOptions.INHERIT_ENV,
 			out: process::INHERIT, err: process::INHERIT)!;
 		if (status != 0) return NIX_FAILED~;
@@ -173,14 +188,21 @@ fn void? PortableNixRunner.validate_package_attr(&self, String flake_dir,
 fn String? PortableNixRunner.read_manifest(&self, Allocator allocator, String flake_dir,
 	String input_name, String library_path) @dynamic
 {
+	String relative = library_path.len
+		? string::format(tmem, "%s/manifest.json", library_path)
+		: "manifest.json";
+	return self.read_source_json(allocator, flake_dir, input_name, relative);
+}
+
+fn String? PortableNixRunner.read_source_json(&self, Allocator allocator, String flake_dir,
+	String input_name, String relative_path) @dynamic
+{
 	@pool()
 	{
-		String relative = library_path.len
-			? string::format(tmem, "%s/manifest.json", library_path)
-			: "manifest.json";
+		validate_source_path(relative_path)!;
 		String expression = string::format(tmem,
 			`let f = builtins.getFlake "path:%s"; in builtins.fromJSON (builtins.readFile (f.inputs.%s + "/%s"))`,
-			flake_dir, input_name, relative);
+			flake_dir, input_name, relative_path);
 		return self.eval_json(allocator, flake_dir, expression);
 	};
 }

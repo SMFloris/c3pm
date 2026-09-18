@@ -1,6 +1,6 @@
 module c3pm;
 
-faultdef INVALID_GITHUB_URI,
+faultdef INVALID_ARGUMENTS,
 	INVALID_SOURCE,
 	INVALID_SOURCE_PATH,
 	INVALID_NIX_ATTRIBUTE,
@@ -18,10 +18,20 @@ faultdef INVALID_GITHUB_URI,
 	TRANSACTION_FAILED,
 	UNKNOWN_TARGET,
 	NON_EXECUTABLE_TARGET,
+	NON_LINKABLE_TARGET,
 	AMBIGUOUS_TARGET,
 	NO_EXECUTABLE_TARGET,
 	BUNDLE_FAILED,
 	BUNDLE_OUTPUT_MISSING;
+
+enum SourceKind : char
+{
+	GITHUB,
+	GIT_HTTPS,
+	GIT_SSH,
+	ARCHIVE_HTTPS,
+	FOLDER,
+}
 
 struct ProjectTarget
 {
@@ -29,18 +39,38 @@ struct ProjectTarget
 	String type;
 }
 
-struct FetchGithub
+struct PackageSource
 {
-	String owner;
-	String repo;
+	SourceKind kind;
+	String location;
 	String rev;
-	String path;
+	String subdir;
+	String sha256;
+	// Runtime-only base for relative folder sources; never serialized.
+	String base;
 }
 
 struct DependencySpec
 {
 	String name;
-	FetchGithub source;
+	PackageSource source;
+}
+
+struct LinkSpec
+{
+	String name;
+	PackageSource source;
+	bool has_source;
+	String c3c_target;
+	String nix_package;
+	bool passthrough;
+	String for_target;
+}
+
+struct ToolchainConfig
+{
+	String c3c_version;
+	String nixpkgs;
 }
 
 struct NixInputs
@@ -60,12 +90,14 @@ struct Metadata
 	DependencySpec[] sources;
 	NixInputs nix;
 	ProjectTarget[] targets;
+	LinkSpec[] links;
+	ToolchainConfig toolchain;
 }
 
 struct GraphNode
 {
 	String name;
-	FetchGithub source;
+	PackageSource source;
 	String[] dependencies;
 	NixInputs nix;
 }
@@ -76,14 +108,16 @@ struct Graph
 	String[] roots;
 }
 
-fn bool source_equal(FetchGithub a, FetchGithub b)
+fn bool source_equal(PackageSource a, PackageSource b)
 {
-	return a.owner == b.owner && a.repo == b.repo && a.rev == b.rev && a.path == b.path;
+	return a.kind == b.kind && a.location == b.location && a.rev == b.rev &&
+		a.subdir == b.subdir && a.sha256 == b.sha256;
 }
 
-fn bool source_identity_equal(FetchGithub a, FetchGithub b)
+fn bool source_identity_equal(PackageSource a, PackageSource b)
 {
-	return a.owner == b.owner && a.repo == b.repo && a.rev == b.rev;
+	return a.kind == b.kind && a.location == b.location && a.rev == b.rev &&
+		a.sha256 == b.sha256 && a.base == b.base;
 }
 
 fn GraphNode*? Graph.find(&self, String name)

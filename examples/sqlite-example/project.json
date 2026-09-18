@@ -49,12 +49,11 @@
       "c3": {
         "dependencies": {
           "sqlite3": {
-            "fetchGithub": {
-              "owner": "SMFloris",
-              "repo": "c3c-vendor",
-              "rev": "c3pm",
-              "path": "libraries/sqlite3.c3l"
-            }
+            "source": "github",
+            "owner": "SMFloris",
+            "repository": "c3c-vendor",
+            "rev": "c3pm",
+            "subdir": "libraries/sqlite3.c3l"
           }
         }
       }

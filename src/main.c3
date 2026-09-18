@@ -29,7 +29,10 @@ fn int? run_command(String[] args)
 {
 	@pool()
 	{
-		if (args[1] == "nix") return run_nix_command(args);
+		if (args[1] == "toolchain" && args.len >= 3 && args[2] == "nix")
+		{
+			return run_toolchain_nix_command(args);
+		}
 		PortableNixRunner? selected = select_nix_runner(tmem);
 		if (catch selected) return 1;
 		PortableNixRunner portable = selected;
@@ -37,6 +40,9 @@ fn int? run_command(String[] args)
 		Path root = find_project_root(tmem, path::tcwd()!)!;
 		switch (args[1])
 		{
+			case "dep": return run_dep_command(args, root, runner);
+			case "link": return run_link_command(args, root, runner);
+			case "toolchain": return run_toolchain_project_command(args, root, runner);
 			case "install":
 				if (args.len != 2) return INVALID_METADATA~;
 				String tree = install_project(tmem, root, runner)!;
@@ -52,16 +58,6 @@ fn int? run_command(String[] args)
 				}
 				String flake_ref = string::format(tmem, "path:%s/.c3pm/nix", (String)root);
 				return runner.develop(flake_ref, command)!;
-			case "add":
-				if (args.len != 3) return INVALID_GITHUB_URI~;
-				String added = add_dependency(tmem, root, args[2], runner)!;
-				io::printfn("Added C3 dependency \"%s\"", added);
-				return 0;
-			case "remove":
-				if (args.len != 3) return INVALID_METADATA~;
-				remove_dependency(tmem, root, args[2], runner)!;
-				io::printfn("Removed C3 dependency \"%s\"", args[2]);
-				return 0;
 			case "bundle":
 				return run_bundle_command(args, root, runner);
 			default:
@@ -77,13 +73,18 @@ fn void print_help()
 		"Usage: c3pm <command> [options]\n"
 		"\n"
 		"Commands:\n"
-		"  add github://OWNER@REPO[/PATH]#REF\n"
-		"  remove NAME\n"
+		"  dep add SOURCE [options]\n"
+		"  dep remove NAME [--for-target TARGET]\n"
+		"  dep list [--for-target TARGET]\n"
+		"  link add NAME [options]\n"
+		"  link remove NAME [--for-target TARGET]\n"
+		"  link list [--for-target TARGET]\n"
+		"  toolchain show\n"
+		"  toolchain c3c <set VERSION|reset>\n"
+		"  toolchain nixpkgs <set REF|update|reset>\n"
+		"  toolchain nix <status|use VALUE|reset>\n"
 		"  install\n"
 		"  shell [-- COMMAND...]\n"
 		"  bundle [TARGET] [--output PATH]\n"
-		"  nix status\n"
-		"  nix use <system | portable | PATH>\n"
-		"  nix reset\n"
 	);
 }
