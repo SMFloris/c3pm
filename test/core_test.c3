@@ -439,6 +439,7 @@ fn void bundle_targets_and_flake_outputs_are_generated_test() @test
 	String flake = generate_flake_nix(tmem, &graph, &project);
 	String shell = generate_shell_nix(tmem, &graph, &project);
 	test::@check(flake.contains(`nix-portable.url = "github:DavHau/nix-portable"`));
+	test::@check(!flake.contains(`c3c-source`));
 	test::@check(flake.contains(`nix-portable-nix.follows = "nix-portable/nix"`));
 	test::@check(flake.contains(`inputs.nix-portable.bundlers.${system}.zstd-fast`));
 	test::@check(flake.contains(
@@ -544,8 +545,16 @@ fn void toolchain_and_link_metadata_generation_test() @test
 	test::eq("path:./nix/custom.nix", project.links[0].nix_package);
 	Graph graph;
 	String flake = generate_flake_nix(tmem, &graph, &project);
+	String shell = generate_shell_nix(tmem, &graph, &project);
 	String project_nix = generate_project_nix(tmem, &project);
 	test::@check(flake.contains(`nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11"`));
+	test::@check(flake.contains(`c3c-source = {`));
+	test::@check(flake.contains(`url = "github:c3lang/c3c/v0.8.3"`));
+	test::@check(flake.contains(`flake = false`));
+	test::@check(shell.contains(`inputs.c3c-source`));
+	test::@check(shell.contains(`inherit project graph c3cSource`));
+	test::@check(C3PM_LIB_NIX.contains(`pkgs.c3c.overrideAttrs`));
+	test::@check(C3PM_LIB_NIX.contains(`src = source`));
 	test::@check(project_nix.contains(`c3cVersion = "0.8.3"`));
 	test::@check(project_nix.contains(
 		`import (./imports/links/custom/nix/custom.nix) { inherit pkgs; }`));
@@ -578,6 +587,7 @@ fn void linked_c3_project_generation_test() @test
 	test::@check(flake.contains("git+ssh://git@example.com/acme/protocol.git?ref=v1"));
 	test::@check(shell.contains(`target = "protocol-static"`));
 	test::@check(shell.contains(`c3cVersion = "0.8.3"`));
+	test::@check(shell.contains(`inherit c3cSource`));
 	test::@check(project_nix.contains(`linkedProjects."protocol"`));
 	test::@check(project_nix.contains(
 		`import (sources."protocol" + "/project/package.nix") { inherit pkgs; }`));
