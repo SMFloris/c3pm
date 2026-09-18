@@ -2,6 +2,8 @@
 /out/
 /dist/
 /release/
+/_site/
+/docs/_site/
 /.tools/
 
 /lib/*.c3l

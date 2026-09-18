@@ -1,0 +1,13 @@
+title: c3pm
+description: A package manager for reproducible C3 projects, powered by Nix.
+url: ""
+baseurl: ""
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+permalink: pretty
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - README.md
