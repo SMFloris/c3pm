@@ -1,5 +1,9 @@
 # c3pm — C3 Package Manager
 
+<p align="center">
+  <img src="docs/assets/c3pm-logo.png" alt="c3pm — C3 Package Manager" width="720">
+</p>
+
 `c3pm` is a Nix-backed package manager for C3 projects.
 
 It reads the standard C3 dependency graph and adds `vendor.c3pm` metadata for sources, toolchains, and native packages. c3pm uses those inputs to create a reproducible development and build environment.
