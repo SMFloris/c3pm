@@ -2,6 +2,8 @@
 
 `c3pm` is a Nix-backed package manager for C3 projects.
 
+**Current c3pm version:** 0.2.1.
+
 It reads the standard C3 dependency graph and adds `vendor.c3pm` metadata for sources, toolchains, and native packages. c3pm uses those inputs to create a reproducible development and build environment.
 
 > [!WARNING]
@@ -9,7 +11,7 @@ It reads the standard C3 dependency graph and adds `vendor.c3pm` metadata for so
 
 > [!NOTE]
 > **Default nixpkgs target:** nixpkgs-unstable.
-> **Default C3 target:** C3 0.8.3.
+> **Default C3 target:** C3 0.8.4.
 
 Released c3pm binaries are standalone static executables. Running c3pm itself does **not** require C3 or a compatible system libc. Nix remains a separate backend: c3pm can use your existing installation or manage `nix-portable` for you.
 
@@ -81,10 +83,10 @@ c3pm manages the C3 compiler and nixpkgs revision for each project. Each user se
 
 ### C3 compiler
 
-The default C3 version is **0.8.3**. Pin a version for the project, or reset it to the default:
+The default C3 version is **0.8.4**. Pin a version for the project, or reset it to the default:
 
 ```sh
-c3pm toolchain c3c set 0.8.3
+c3pm toolchain c3c set 0.8.4
 c3pm toolchain c3c reset
 ```
 
@@ -308,6 +310,7 @@ c3pm shell -- ./build/my_app
 
 `c3pm shell` runs `install` first, then enters the locked Nix environment with:
 
+- a `(c3pm)` prompt prefix so the active environment is visible;
 - `c3c`;
 - declared native packages;
 - compiler and linker configuration;
@@ -419,7 +422,7 @@ This complete `project.json` example declares SQLite as both a C3 dependency and
   "vendor": {
     "c3pm": {
       "toolchain": {
-        "c3c": "0.8.3",
+        "c3c": "0.8.4",
         "nixpkgs": "github:NixOS/nixpkgs/nixpkgs-unstable"
       },
       "c3": {
@@ -707,7 +710,7 @@ A portable bundle is not necessarily a statically linked ELF binary. The embedde
 
 ## Build c3pm from source
 
-With C3 0.8.3 installed:
+With C3 0.8.4 installed:
 
 ```sh
 c3c build

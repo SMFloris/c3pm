@@ -453,6 +453,8 @@ fn void bundle_targets_and_flake_outputs_are_generated_test() @test
 	test::@check(C3PM_LIB_NIX.contains(
 		`cp -R --no-preserve=mode,ownership "$src"/. source/`));
 	test::@check(C3PM_LIB_NIX.contains(`export HOME="$TMPDIR/c3pm-home"`));
+	test::@check(C3PM_LIB_NIX.contains(
+		`PS1="\[\e[1;35m\](c3pm)\[\e[0m\] $PS1"`));
 	String project_nix = generate_project_nix(tmem, &project);
 	test::@check(project_nix.contains(`version = "1.2.3"`));
 }

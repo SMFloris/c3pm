@@ -4,7 +4,7 @@
   "dependency-search-paths": [ "lib" ],
   "dependencies": [],
   "authors": [],
-  "version": "0.1.0",
+  "version": "0.2.1",
   "sources": [ "src/**" ],
   "test-sources": [ "test/**" ],
   "build-dir": "build",
@@ -16,4 +16,10 @@
   },
   "cpu": "generic",
   "opt": "O0"
+,
+  "vendor": {
+    "c3pm": {
+      "toolchain": { "c3c": "0.8.4" }
+    }
+  }
 }

@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 30
 
     env:
-      C3_VERSION: "0.8.3"
+      C3_VERSION: "0.8.4"
 
     steps:
       - name: Check out source
@@ -43,6 +43,38 @@ jobs:
 
       - name: Build standalone c3pm
         run: |
+          release_version="${GITHUB_REF_NAME#v}"
+          case "${release_version}" in
+            ""|*[!0-9A-Za-z.+-]*)
+              echo "invalid release tag: ${GITHUB_REF_NAME}" >&2
+              exit 1
+              ;;
+          esac
+          case "${C3_VERSION}" in
+            ""|*[!0-9A-Za-z.+-]*)
+              echo "invalid C3 version: ${C3_VERSION}" >&2
+              exit 1
+              ;;
+          esac
+          readme_c3_version="$(sed -n \
+            's/^> \*\*Default C3 target:\*\* C3 \(.*\)\.$/\1/p' README.md)"
+          case "${readme_c3_version}" in
+            ""|*[!0-9A-Za-z.+-]*)
+              echo "invalid C3 version in README.md: ${readme_c3_version}" >&2
+              exit 1
+              ;;
+          esac
+          readme_c3_pattern="${readme_c3_version//./\\.}"
+          sed -i \
+            "s/^const String C3PM_VERSION = .*$/const String C3PM_VERSION = \"${release_version}\";/" \
+            src/version.c3
+          sed -i \
+            "s/^\*\*Current c3pm version:\*\* .*$/\*\*Current c3pm version:\*\* ${release_version}./" \
+            README.md
+          sed -i "s/${readme_c3_pattern}/${C3_VERSION}/g" README.md
+          grep -Fx "**Current c3pm version:** ${release_version}." README.md
+          grep -Fx "> **Default C3 target:** C3 ${C3_VERSION}." README.md
+          grep -Fx "The default C3 version is **${C3_VERSION}**. Pin a version for the project, or reset it to the default:" README.md
           c3c --version
           c3c --linux-libc=musl -z -static --cc musl-gcc -O2 build c3pm
           mkdir -p release
@@ -51,7 +83,7 @@ jobs:
           test -f release/c3pm-linux-x86_64
           test ! -L release/c3pm-linux-x86_64
           test -x release/c3pm-linux-x86_64
-          release/c3pm-linux-x86_64 --version
+          test "$(release/c3pm-linux-x86_64 --version)" = "c3pm ${release_version}"
           if readelf -l release/c3pm-linux-x86_64 | grep -q INTERP; then
             echo "release executable is dynamically linked" >&2
             exit 1
@@ -59,11 +91,13 @@ jobs:
 
       - name: Create source archive and checksums
         run: |
+          git add README.md src/version.c3
+          release_tree="$(git write-tree)"
           git archive \
             --format=zip \
             --prefix="c3pm-${GITHUB_REF_NAME}/" \
             --output="release/c3pm-${GITHUB_REF_NAME}-source.zip" \
-            "${GITHUB_SHA}"
+            "${release_tree}"
           cp install.sh release/install.sh
           chmod +x release/install.sh
           cd release

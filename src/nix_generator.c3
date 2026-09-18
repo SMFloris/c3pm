@@ -435,6 +435,11 @@ let
     in pkgs.mkShell {
       nativeBuildInputs = [ (selectC3c project.c3cVersion c3cSource) ] ++ inputs.nativeBuildInputs;
       buildInputs = inputs.buildInputs;
+      shellHook = ''
+        if [[ $- == *i* ]]; then
+          PS1="\[\e[1;35m\](c3pm)\[\e[0m\] $PS1"
+        fi
+      '';
     };
 
   c3ProjectBuilder = { src, project, graph, target, c3cSource }:

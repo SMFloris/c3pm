@@ -12,7 +12,7 @@ fn int main(String[] args)
 	}
 	if (args[1] == "--version" || args[1] == "-V")
 	{
-		io::printn("c3pm 0.1.0");
+		io::printfn("c3pm %s", C3PM_VERSION);
 		return 0;
 	}
 	int? result = run_command(args);
