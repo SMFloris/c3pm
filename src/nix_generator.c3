@@ -246,9 +246,6 @@ fn String generate_flake_nix(Allocator allocator, Graph* graph, Metadata* projec
 			project.toolchain.c3c_version));
 		out.append(";\n      flake = false;\n    };\n\n");
 	}
-	out.append(
-		"    nix-portable.url = \"github:DavHau/nix-portable\";\n"
-		"    nix-portable-nix.follows = \"nix-portable/nix\";\n\n");
 	foreach (position, index : sorted)
 	{
 		if (source_seen_before(graph, sorted, position)) continue;
@@ -274,37 +271,6 @@ fn String generate_flake_nix(Allocator allocator, Graph* graph, Metadata* projec
 		"      devShells = forAllSystems (system: { default = evaluated.${system}.shell; });\n"
 		"      packages = forAllSystems (system:\n"
 		"        evaluated.${system}.packages // { c3pmLibs = evaluated.${system}.c3pmLibs; });\n"
-		"      bundlers = forAllSystems (system:\n"
-		"        let pkgs = import nixpkgs { inherit system; };\n"
-		"        in {\n"
-		"          c3pm = drv:\n"
-		"            let\n"
-		"              gitPlaceholder = pkgs.runCommand \"c3pm-git-placeholder\" {} ''\n"
-		"                mkdir -p $out/bin\n"
-		"                printf '%s\\n' '#!/bin/sh' 'echo \"git is unavailable in this portable bundle\" >&2' 'exit 127' > $out/bin/git\n"
-		"                chmod +x $out/bin/git\n"
-		"              '';\n"
-		"              portablePkgs = pkgs.extend (_: _: { gitMinimal = gitPlaceholder; });\n"
-		"              mainProgram = drv.meta.mainProgram or drv.pname;\n"
-		"              payload = pkgs.runCommand \"${drv.name}-c3pm-bundle-payload\" {\n"
-		"                meta.mainProgram = mainProgram;\n"
-		"              } ''\n"
-		"                mkdir -p $out/bin\n"
-		"                ln -s ${nixpkgs.lib.getExe drv} $out/bin/${mainProgram}\n"
-		"                # nix-portable currently expects this beside a hardcoded bundled executable.\n"
-		"                # Reuse the exact Nix already embedded by nix-portable.\n"
-		"                ln -s ${inputs.nix-portable-nix.packages.${system}.nix}/bin/nix $out/bin/nix\n"
-		"                # nix-portable initializes Git even when the bundled program never uses it.\n"
-		"                # Embed a tiny placeholder so application bundles do not install Git.\n"
-		"                mkdir -p $out/share/c3pm-runtime\n"
-		"                ln -s ${gitPlaceholder} $out/share/c3pm-runtime/git\n"
-		"              '';\n"
-		"            in inputs.nix-portable.packages.${system}.nix-portable.override {\n"
-		"              bundledPackage = payload;\n"
-		"              compression = \"zstd -3 -T0\";\n"
-		"              pkgs = portablePkgs;\n"
-		"            };\n"
-		"        });\n"
 	);
 	out.append("      apps = forAllSystems (system: {\n");
 	foreach (&target : project.targets)

@@ -9,7 +9,7 @@ interface NixRunner
 	fn void? update_input(String flake_dir, String input_name);
 	fn String? eval_json(Allocator allocator, String flake_dir, String expression);
 	fn String? build(Allocator allocator, String flake_ref);
-	fn void? bundle(String installable, String bundler, String output_link, String executable_name);
+	fn void? bundle(String installable, String output_link, String executable_name);
 	fn int? develop(String flake_ref, String[] command);
 	fn void? validate_package_attr(String flake_dir, String system, String attr);
 	fn String? read_source_json(Allocator allocator, String flake_dir, String input_name, String relative_path);
@@ -119,7 +119,7 @@ fn String? PortableNixRunner.build(&self, Allocator allocator, String flake_ref)
 	};
 }
 
-fn void? PortableNixRunner.bundle(&self, String installable, String bundler,
+fn void? PortableNixRunner.bundle(&self, String installable,
 	String output_link, String executable_name) @dynamic
 {
 	@pool()
@@ -127,7 +127,6 @@ fn void? PortableNixRunner.bundle(&self, String installable, String bundler,
 		String nix_link = string::format(tmem, "%s.nix-link", output_link);
 		String[] command = self.command(tmem, {
 			"bundle", "--quiet", "--no-update-lock-file",
-			"--bundler", bundler,
 			"--out-link", nix_link,
 			installable,
 		});
@@ -142,6 +141,10 @@ fn void? PortableNixRunner.bundle(&self, String installable, String bundler,
 		String flake_ref = installable[:fragment];
 		String bundled_executable = string::format(tmem, "%s/bin/%s", nix_link,
 			executable_name);
+		if (access(bundled_executable.zstr_tcopy(), 0) != 0)
+		{
+			bundled_executable = nix_link;
+		}
 		String[] copy_command = self.command(tmem, {
 			"develop", "--quiet", "--no-update-lock-file", flake_ref,
 			"-c", "cp", "--dereference", bundled_executable, output_link,

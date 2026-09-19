@@ -67,7 +67,7 @@ fn String? FakeNixRunner.eval_json(&self, Allocator allocator, String flake_dir,
 fn String? FakeNixRunner.build(&self, Allocator allocator, String flake_ref) @dynamic
 	=> "/nix/store/c3pm-test-libs".copy(allocator);
 
-fn void? FakeNixRunner.bundle(&self, String installable, String bundler,
+fn void? FakeNixRunner.bundle(&self, String installable,
 	String output_link, String executable_name) @dynamic
 {
 	path::mkdir(string::format(tmem, "%s/bin", output_link), true)!;
@@ -438,17 +438,8 @@ fn void bundle_targets_and_flake_outputs_are_generated_test() @test
 	Graph graph;
 	String flake = generate_flake_nix(tmem, &graph, &project);
 	String shell = generate_shell_nix(tmem, &graph, &project);
-	test::@check(flake.contains(`nix-portable.url = "github:DavHau/nix-portable"`));
+	test::@check(!flake.contains(`nix-portable`));
 	test::@check(!flake.contains(`c3c-source`));
-	test::@check(flake.contains(`nix-portable-nix.follows = "nix-portable/nix"`));
-	test::@check(flake.contains(`gitMinimal = gitPlaceholder`));
-	test::@check(flake.contains(`git is unavailable in this portable bundle`));
-	test::@check(!flake.contains(`${pkgs.gitMinimal}`));
-	test::@check(flake.contains(`inputs.nix-portable.packages.${system}.nix-portable.override`));
-	test::@check(flake.contains(`pkgs = portablePkgs`));
-	test::@check(flake.contains(
-		`ln -s ${inputs.nix-portable-nix.packages.${system}.nix}/bin/nix $out/bin/nix`));
-	test::@check(!flake.contains(`ln -s ${pkgs.nix}/bin/nix $out/bin/nix`));
 	test::@check(flake.contains(`self.packages.${system}."server"`));
 	test::@check(!flake.contains(`self.packages.${system}."library"`));
 	test::@check(shell.contains(`"server" = c3pm.c3ProjectBuilder`));

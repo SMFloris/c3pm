@@ -346,7 +346,7 @@ dist/<target>
 
 `bundle` supports executable targets only. Its output is a regular Linux executable rather than a symlink into the Nix store.
 
-[How portable bundles work](#how-portable-bundles-work) explains how Nix finds the package's referenced runtime closure and how the pinned nix-portable `zstd-fast` bundler embeds it in the output file.
+[How portable bundles work](#how-portable-bundles-work) explains how Nix finds the package's referenced runtime closure and embeds it in the output file.
 
 ## Installer reference
 
@@ -692,7 +692,7 @@ Nix reference graph
         ↓
 complete runtime closure
         ↓
-nix-portable zstd-fast bundler
+Nix default bundler
         ↓
 single portable Linux executable
 ```
@@ -704,10 +704,9 @@ c3pm does **not**:
 - copy `.so` files manually;
 - patch ELF paths.
 
-Instead, the pinned nix-portable bundler embeds the built package and its runtime closure. When the resulting executable starts, the bundler provides a virtual `/nix/store` environment.
+Instead, `nix bundle` embeds the built package and its runtime closure. When the resulting executable starts, the default bundler provides the environment needed by those store paths.
 
 The result can run without system copies of SQLite, OpenSSL, Git, Nix, or c3pm.
-The bundle suppresses nix-portable's otherwise automatic first-run Git installation;
 Git is not included unless the packaged application itself references it.
 
 A portable bundle is not necessarily a statically linked ELF binary. The embedded Nix closure may still contain dynamically linked libraries. Here, **portable** means that one output file carries everything referenced by the packaged program.

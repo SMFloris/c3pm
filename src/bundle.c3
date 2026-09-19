@@ -106,11 +106,10 @@ fn String? bundle_project(Allocator allocator, Path project_root, String request
 		path::mkdir(temporary, true)!;
 		defer if (path::exists(temporary_path)) (void)path::rmtree(temporary_path);
 		String result_link = string::format(tmem, "%s/result", temporary);
-		String bundler = string::format(tmem, "%s#c3pm", flake_ref);
 		io::printn("Bundling runtime closure...");
-		if (catch err = runner.bundle(installable, bundler, result_link, target))
+		if (catch err = runner.bundle(installable, result_link, target))
 		{
-			io::printfn("The nix-portable bundler failed for target \"%s\".", target);
+			io::printfn("The Nix bundler failed for target \"%s\".", target);
 			return err~;
 		}
 

@@ -124,16 +124,14 @@ jobs:
 
           cd "${RUNNER_TEMP}"
           first_run_log="${RUNNER_TEMP}/sqlite-bundle-first-run.log"
-          NP_LOCATION="${RUNNER_TEMP}/sqlite-bundle-runtime" \
-            ./sqlite-example-portable add "bundled lifecycle" 2>&1 | tee "${first_run_log}"
+          ./sqlite-example-portable add "bundled lifecycle" 2>&1 | tee "${first_run_log}"
           if grep -F "Installing git" "${first_run_log}"; then
             echo "bundle unexpectedly installed Git on first run" >&2
             exit 1
           fi
-          if find "${RUNNER_TEMP}/sqlite-bundle-runtime/.nix-portable/nix/store" \
-            -maxdepth 1 -name '*-git-minimal-*' -print -quit | grep -q .; then
-            echo "bundle unexpectedly contains git-minimal" >&2
+          if grep -a -F "nix-portable" ./sqlite-example-portable || \
+            grep -a -F "git-minimal" ./sqlite-example-portable; then
+            echo "bundle unexpectedly contains the old portable runtime" >&2
             exit 1
           fi
-          NP_LOCATION="${RUNNER_TEMP}/sqlite-bundle-runtime" \
-            ./sqlite-example-portable list | grep -F "bundled lifecycle"
+          ./sqlite-example-portable list | grep -F "bundled lifecycle"
