@@ -440,6 +440,7 @@ fn void bundle_targets_and_flake_outputs_are_generated_test() @test
 	String shell = generate_shell_nix(tmem, &graph, &project);
 	test::@check(!flake.contains(`nix-portable`));
 	test::@check(!flake.contains(`c3c-source`));
+	test::@check(!flake.contains(`c3c-binary`));
 	test::@check(flake.contains(`self.packages.${system}."server"`));
 	test::@check(!flake.contains(`self.packages.${system}."library"`));
 	test::@check(shell.contains(`"server" = c3pm.c3ProjectBuilder`));
@@ -547,11 +548,16 @@ fn void toolchain_and_link_metadata_generation_test() @test
 	test::@check(flake.contains(`nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11"`));
 	test::@check(flake.contains(`c3c-source = {`));
 	test::@check(flake.contains(`url = "github:c3lang/c3c/v0.8.3"`));
+	test::@check(flake.contains(`c3c-binary = {`));
+	test::@check(flake.contains(
+		`url = "https://github.com/c3lang/c3c/releases/download/v0.8.3/c3-linux-static.tar.gz"`));
 	test::@check(flake.contains(`flake = false`));
 	test::@check(shell.contains(`inputs.c3c-source`));
-	test::@check(shell.contains(`inherit project graph c3cSource`));
+	test::@check(shell.contains(`inputs.c3c-binary`));
+	test::@check(shell.contains(`inherit project graph c3cSource c3cBinary`));
 	test::@check(C3PM_LIB_NIX.contains(`pkgs.c3c.overrideAttrs`));
 	test::@check(C3PM_LIB_NIX.contains(`src = source`));
+	test::@check(C3PM_LIB_NIX.contains(`pkgs.runCommand "c3c-${version}-binary"`));
 	test::@check(project_nix.contains(`c3cVersion = "0.8.3"`));
 	test::@check(project_nix.contains(
 		`import (./imports/links/custom/nix/custom.nix) { inherit pkgs; }`));

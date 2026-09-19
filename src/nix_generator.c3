@@ -245,6 +245,11 @@ fn String generate_flake_nix(Allocator allocator, Graph* graph, Metadata* projec
 		append_nix_string(&out, string::format(tmem, "github:c3lang/c3c/v%s",
 			project.toolchain.c3c_version));
 		out.append(";\n      flake = false;\n    };\n\n");
+		out.append("    c3c-binary = {\n      url = ");
+		append_nix_string(&out, string::format(tmem,
+			"https://github.com/c3lang/c3c/releases/download/v%s/c3-linux-static.tar.gz",
+			project.toolchain.c3c_version));
+		out.append(";\n      flake = false;\n    };\n\n");
 	}
 	foreach (position, index : sorted)
 	{
@@ -296,7 +301,8 @@ fn String generate_shell_nix(Allocator allocator, Graph* graph, Metadata* projec
 		"{ pkgs, inputs }:\n\n"
 		"let\n"
 		"  c3pm = import ./c3pm-lib.nix { inherit pkgs; };\n"
-		"  c3cSource = if project.c3cVersion == \"\" then null else inputs.c3c-source;\n\n"
+		"  c3cSource = if project.c3cVersion == \"\" then null else inputs.c3c-source;\n"
+		"  c3cBinary = if project.c3cVersion == \"\" then null else inputs.c3c-binary;\n\n"
 		"  sources = {\n");
 	foreach (index : sorted)
 	{
@@ -338,7 +344,7 @@ fn String generate_shell_nix(Allocator allocator, Graph* graph, Metadata* projec
 		}
 		out.append("; target = "); append_nix_string(&out, link.c3c_target);
 		out.append("; c3cVersion = "); append_nix_string(&out, project.toolchain.c3c_version);
-		out.append("; inherit c3cSource; };\n");
+		out.append("; inherit c3cSource c3cBinary; };\n");
 	}
 	out.append(
 		"  };\n\n"
@@ -348,7 +354,7 @@ fn String generate_shell_nix(Allocator allocator, Graph* graph, Metadata* projec
 		"  projectSource = ./project-source;\n"
 		"in {\n"
 		"  inherit c3pm project graph c3pmLibs projectSource;\n"
-		"  shell = c3pm.mkShell { inherit project graph c3cSource; };\n"
+		"  shell = c3pm.mkShell { inherit project graph c3cSource c3cBinary; };\n"
 	);
 	out.append("  packages = {\n");
 	foreach (&target : project.targets)
@@ -356,7 +362,7 @@ fn String generate_shell_nix(Allocator allocator, Graph* graph, Metadata* projec
 		if (target.type != "executable") continue;
 		out.append("    ");
 		append_nix_string(&out, target.name);
-		out.append(" = c3pm.c3ProjectBuilder {\n      src = projectSource;\n      inherit project graph c3cSource;\n      target = ");
+		out.append(" = c3pm.c3ProjectBuilder {\n      src = projectSource;\n      inherit project graph c3cSource c3cBinary;\n      target = ");
 		append_nix_string(&out, target.name);
 		out.append(";\n    };\n");
 	}
@@ -370,12 +376,19 @@ const String C3PM_LIB_NIX =
 let
   lib = pkgs.lib;
 
-  selectC3c = version: source:
+  selectC3c = version: source: binary:
     if version == "" then pkgs.c3c else
-    pkgs.c3c.overrideAttrs (_: {
-      inherit version;
-      src = source;
-    });
+    if pkgs.stdenv.hostPlatform.system == "x86_64-linux" then
+      pkgs.runCommand "c3c-${version}-binary" {} ''
+        mkdir -p $out/bin
+        ln -s ${binary}/c3c $out/bin/c3c
+        ln -s ${binary}/c3fmt $out/bin/c3fmt
+      ''
+    else
+      pkgs.c3c.overrideAttrs (_: {
+        inherit version;
+        src = source;
+      });
 
   closure = roots:
     let
@@ -407,10 +420,10 @@ let
       path = dep.c3lPath;
     }) graph);
 
-  mkShell = { project, graph, c3cSource }:
+  mkShell = { project, graph, c3cSource, c3cBinary }:
     let inputs = collectInputs project graph;
     in pkgs.mkShell {
-      nativeBuildInputs = [ (selectC3c project.c3cVersion c3cSource) ] ++ inputs.nativeBuildInputs;
+      nativeBuildInputs = [ (selectC3c project.c3cVersion c3cSource c3cBinary) ] ++ inputs.nativeBuildInputs;
       buildInputs = inputs.buildInputs;
       shellHook = ''
         if [[ $- == *i* ]]; then
@@ -419,7 +432,7 @@ let
       '';
     };
 
-  c3ProjectBuilder = { src, project, graph, target, c3cSource }:
+  c3ProjectBuilder = { src, project, graph, target, c3cSource, c3cBinary }:
     let
       inputs = collectInputs project graph;
       libs = mkC3LibTree graph;
@@ -428,7 +441,7 @@ let
       version = project.version;
       meta.mainProgram = target;
       inherit src;
-      nativeBuildInputs = [ (selectC3c project.c3cVersion c3cSource) ] ++ inputs.nativeBuildInputs;
+      nativeBuildInputs = [ (selectC3c project.c3cVersion c3cSource c3cBinary) ] ++ inputs.nativeBuildInputs;
       buildInputs = inputs.buildInputs;
       unpackPhase = ''
         runHook preUnpack
@@ -455,12 +468,12 @@ let
       '';
       };
 
-  c3LinkedProjectBuilder = { name, src, target, c3cVersion, c3cSource }:
+  c3LinkedProjectBuilder = { name, src, target, c3cVersion, c3cSource, c3cBinary }:
     pkgs.stdenv.mkDerivation {
       pname = name;
       version = "0.0.0";
       inherit src;
-      nativeBuildInputs = [ (selectC3c c3cVersion c3cSource) ];
+      nativeBuildInputs = [ (selectC3c c3cVersion c3cSource c3cBinary) ];
       buildPhase = ''
         runHook preBuild
         export HOME="$TMPDIR/c3pm-home"
