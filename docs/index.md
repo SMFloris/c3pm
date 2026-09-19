@@ -48,6 +48,14 @@ description: Reproducible C3 projects, powered by Nix.
   </div>
 </div>
 
+<section class="home-demo" aria-labelledby="home-demo-title">
+  <h2 id="home-demo-title">See c3pm in action</h2>
+  <div class="home-demo-player">
+    <script src="https://asciinema.org/a/a0BODrl7BoN9U6xM.js" id="asciicast-a0BODrl7BoN9U6xM" async="true"></script>
+  </div>
+  <p>The demo shows c3pm fetching <code>sqlite3.c3l</code> from GitHub, switching C3 versions, opening a shell with SQLite installed, and producing one self-contained executable containing <code>libsqlite3.so</code>.</p>
+</section>
+
 <nav class="section-pagination" aria-label="Section navigation">
   <a class="section-page next" href="#quick-start">
     <span>Next</span>

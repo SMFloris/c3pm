@@ -448,6 +448,22 @@ tbody tr:nth-child(even) {
   font-size: 13px;
 }
 
+.home-demo {
+  margin-top: 32px;
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
+}
+
+.home-demo-player {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.home-demo p {
+  color: #555555;
+  line-height: 1.6;
+}
+
 .commands {
   display: grid;
   margin: 24px 0;

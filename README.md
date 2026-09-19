@@ -17,13 +17,7 @@ It reads the standard C3 dependency graph and adds `vendor.c3pm` metadata for so
 
 Released c3pm binaries are standalone static executables. Running c3pm itself does **not** require C3 or a compatible system libc. Nix remains a separate backend: c3pm can use your existing installation or manage `nix-portable` for you.
 
-## Quick start
-
-<p align="center">
-  <a href="https://asciinema.org/a/a0BODrl7BoN9U6xM">
-    <img src="https://asciinema.org/a/a0BODrl7BoN9U6xM.svg" alt="Play the c3pm terminal demo" width="900">
-  </a>
-</p>
+[![asciicast](https://asciinema.org/a/a0BODrl7BoN9U6xM.svg)](https://asciinema.org/a/a0BODrl7BoN9U6xM)
 
 The demo demonstrates how c3pm:
 
@@ -31,6 +25,8 @@ The demo demonstrates how c3pm:
 - switches the C3 compiler version on the fly;
 - opens a development shell with all native dependencies installed—in this case, SQLite;
 - bundles the application and `libsqlite3.so` into one self-contained executable.
+
+## Quick start
 
 ### 1. Install c3pm
 
