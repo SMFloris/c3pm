@@ -19,6 +19,12 @@ Released c3pm binaries are standalone static executables. Running c3pm itself do
 
 ## Quick start
 
+<p align="center">
+  <a href="https://asciinema.org/a/a0BODrl7BoN9U6xM">
+    <img src="https://asciinema.org/a/a0BODrl7BoN9U6xM.svg" alt="Play the c3pm terminal demo" width="900">
+  </a>
+</p>
+
 ### 1. Install c3pm
 
 Run the installer for the latest release:
