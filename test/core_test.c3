@@ -441,7 +441,11 @@ fn void bundle_targets_and_flake_outputs_are_generated_test() @test
 	test::@check(flake.contains(`nix-portable.url = "github:DavHau/nix-portable"`));
 	test::@check(!flake.contains(`c3c-source`));
 	test::@check(flake.contains(`nix-portable-nix.follows = "nix-portable/nix"`));
-	test::@check(flake.contains(`inputs.nix-portable.bundlers.${system}.zstd-fast`));
+	test::@check(flake.contains(`gitMinimal = gitPlaceholder`));
+	test::@check(flake.contains(`git is unavailable in this portable bundle`));
+	test::@check(!flake.contains(`${pkgs.gitMinimal}`));
+	test::@check(flake.contains(`inputs.nix-portable.packages.${system}.nix-portable.override`));
+	test::@check(flake.contains(`pkgs = portablePkgs`));
 	test::@check(flake.contains(
 		`ln -s ${inputs.nix-portable-nix.packages.${system}.nix}/bin/nix $out/bin/nix`));
 	test::@check(!flake.contains(`ln -s ${pkgs.nix}/bin/nix $out/bin/nix`));

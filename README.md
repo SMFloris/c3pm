@@ -706,7 +706,9 @@ c3pm does **not**:
 
 Instead, the pinned nix-portable bundler embeds the built package and its runtime closure. When the resulting executable starts, the bundler provides a virtual `/nix/store` environment.
 
-The result can run without system copies of SQLite, OpenSSL, Nix, or c3pm.
+The result can run without system copies of SQLite, OpenSSL, Git, Nix, or c3pm.
+The bundle suppresses nix-portable's otherwise automatic first-run Git installation;
+Git is not included unless the packaged application itself references it.
 
 A portable bundle is not necessarily a statically linked ELF binary. The embedded Nix closure may still contain dynamically linked libraries. Here, **portable** means that one output file carries everything referenced by the packaged program.
 

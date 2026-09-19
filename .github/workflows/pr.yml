@@ -111,14 +111,29 @@ jobs:
           "${portable_c3pm}" shell -- \
             ./build/sqlite_example list | grep -F "pull request lifecycle"
 
+          bundle_log="${RUNNER_TEMP}/sqlite-bundle.log"
           "${portable_c3pm}" bundle \
-            --output "${RUNNER_TEMP}/sqlite-example-portable"
+            --output "${RUNNER_TEMP}/sqlite-example-portable" 2>&1 | tee "${bundle_log}"
+          if grep -F "git-minimal" "${bundle_log}"; then
+            echo "bundle unexpectedly fetched git-minimal" >&2
+            exit 1
+          fi
           test -f "${RUNNER_TEMP}/sqlite-example-portable"
           test ! -L "${RUNNER_TEMP}/sqlite-example-portable"
           test -x "${RUNNER_TEMP}/sqlite-example-portable"
 
           cd "${RUNNER_TEMP}"
+          first_run_log="${RUNNER_TEMP}/sqlite-bundle-first-run.log"
           NP_LOCATION="${RUNNER_TEMP}/sqlite-bundle-runtime" \
-            ./sqlite-example-portable add "bundled lifecycle"
+            ./sqlite-example-portable add "bundled lifecycle" 2>&1 | tee "${first_run_log}"
+          if grep -F "Installing git" "${first_run_log}"; then
+            echo "bundle unexpectedly installed Git on first run" >&2
+            exit 1
+          fi
+          if find "${RUNNER_TEMP}/sqlite-bundle-runtime/.nix-portable/nix/store" \
+            -maxdepth 1 -name '*-git-minimal-*' -print -quit | grep -q .; then
+            echo "bundle unexpectedly contains git-minimal" >&2
+            exit 1
+          fi
           NP_LOCATION="${RUNNER_TEMP}/sqlite-bundle-runtime" \
             ./sqlite-example-portable list | grep -F "bundled lifecycle"
