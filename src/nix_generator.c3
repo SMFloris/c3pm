@@ -462,8 +462,16 @@ let
       '';
       installPhase = ''
         runHook preInstall
-        mkdir -p $out/bin
-        cp .c3pm-build-out/${lib.escapeShellArg target} $out/bin/${lib.escapeShellArg target}
+        mkdir -p $out/bin $out/libexec
+        cp .c3pm-build-out/${lib.escapeShellArg target} $out/libexec/${lib.escapeShellArg target}
+        cat > $out/bin/${lib.escapeShellArg target} <<EOF
+#!${pkgs.runtimeShell}
+if [ -n "\''${C3PM_BUNDLE_CWD:-}" ]; then
+  cd -- "\''${C3PM_BUNDLE_CWD}" || exit 1
+fi
+exec "$out/libexec/${target}" "\$@"
+EOF
+        chmod +x $out/bin/${lib.escapeShellArg target}
         runHook postInstall
       '';
       };

@@ -71,7 +71,11 @@ fn void? FakeNixRunner.bundle(&self, String installable,
 	String output_link, String executable_name) @dynamic
 {
 	path::mkdir(string::format(tmem, "%s/bin", output_link), true)!;
-	file::save(string::format(tmem, "%s/bin/%s", output_link, executable_name), "bundle")!;
+	file::save(string::format(tmem, "%s/bin/%s", output_link, executable_name),
+		string::format(tmem, `%sgo() {
+  ( . ../env && exec ../run "$@" )
+}
+archive-data`, BUNDLE_PROLOGUE))!;
 	return;
 }
 
@@ -472,7 +476,10 @@ fn void bundle_materializes_regular_atomic_output_test() @test
 	String output = bundle_project(tmem, root, "", "", (NixRunner)&fake)!!;
 	test::eq(string::format(tmem, "%s/dist/server", scratch), output);
 	test::@check(file::is_file(output));
-	test::eq("bundle", (String)file::load(tmem, output)!!);
+	String bundled = (String)file::load(tmem, output)!!;
+	test::@check(bundled.starts_with(BUNDLE_PROLOGUE_WITH_CWD));
+	test::@check(bundled.contains(BUNDLE_RUN_WITH_CWD));
+	test::@check(bundled.ends_with("archive-data"));
 	test::@check(!file::is_file(string::format(tmem, "%s/dist/.server.tmp", scratch)));
 	test::@check(!path::exists(string::format(tmem, "%s/.c3pm/bundle.next", scratch).to_tpath()!!));
 }

@@ -56,6 +56,13 @@ fn String? select_bundle_target(Allocator allocator, Metadata* project, String r
 	return only.name.copy(allocator);
 }
 
+const String BUNDLE_PROLOGUE = "#!/bin/sh\nset -e -u\n";
+const String BUNDLE_PROLOGUE_WITH_CWD =
+	"#!/bin/sh\nset -e -u\nc3pm_bundle_cwd=$PWD\nexport c3pm_bundle_cwd\n";
+const String BUNDLE_RUN = `( . ../env && exec ../run "$@" )`;
+const String BUNDLE_RUN_WITH_CWD =
+	`( . ../env && C3PM_BUNDLE_CWD="$c3pm_bundle_cwd" exec ../run "$@" )`;
+
 fn void? copy_file_streaming(String source, String destination)
 {
 	io::File input = file::open(source, "rb")!;
@@ -66,6 +73,31 @@ fn void? copy_file_streaming(String source, String destination)
 	while (true)
 	{
 		sz count = input.read(buffer[..])!;
+		if (!count) break;
+		io::write_all(&output, buffer[:count])!;
+	}
+	return;
+}
+
+fn void? copy_bundle_preserving_working_directory(String source, String destination)
+{
+	io::File input = file::open(source, "rb")!;
+	defer (void)input.close();
+	io::File output = file::open(destination, "wb")!;
+	defer (void)output.close();
+	char[64 * 1024] buffer;
+	sz count = input.read(buffer[..])!;
+	String prefix = (String)buffer[:count];
+	if (!prefix.starts_with(BUNDLE_PROLOGUE) || !prefix.contains(BUNDLE_RUN))
+	{
+		return BUNDLE_FORMAT_UNSUPPORTED~;
+	}
+	prefix = prefix.treplace(BUNDLE_PROLOGUE, BUNDLE_PROLOGUE_WITH_CWD);
+	prefix = prefix.treplace(BUNDLE_RUN, BUNDLE_RUN_WITH_CWD);
+	io::write_all(&output, prefix)!;
+	while (true)
+	{
+		count = input.read(buffer[..])!;
 		if (!count) break;
 		io::write_all(&output, buffer[:count])!;
 	}
@@ -135,7 +167,7 @@ fn String? bundle_project(Allocator allocator, Path project_root, String request
 		String staged = string::format(tmem, "%s/.%s.tmp", parent, basename);
 		(void)file::delete(staged);
 		defer (void)file::delete(staged);
-		copy_file_streaming(bundled, staged)!;
+		copy_bundle_preserving_working_directory(bundled, staged)!;
 		if (chmod(staged.zstr_tcopy(), 0o755) != 0) return TRANSACTION_FAILED~;
 		if (libc::rename(staged.zstr_tcopy(), destination.zstr_tcopy()) != 0)
 		{
