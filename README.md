@@ -25,6 +25,13 @@ Released c3pm binaries are standalone static executables. Running c3pm itself do
   </a>
 </p>
 
+The demo demonstrates how c3pm:
+
+- fetches `sqlite3.c3l` directly from GitHub;
+- switches the C3 compiler version on the fly;
+- opens a development shell with all native dependencies installed—in this case, SQLite;
+- bundles the application and `libsqlite3.so` into one self-contained executable.
+
 ### 1. Install c3pm
 
 Run the installer for the latest release:
