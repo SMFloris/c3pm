@@ -73,6 +73,10 @@ fn String? registry_string(Object* parent, String key)
 
 fn PackageSource? parse_registry_download(Allocator allocator, Object* download)
 {
+	if (!download.is_map()) return INVALID_REGISTRY~;
+	if (download.has_key("source") || download.has_key("owner") ||
+		download.has_key("repository") || download.has_key("rev") ||
+		download.has_key("subdir")) return INVALID_REGISTRY~;
 	String kind = required_string(download, "type")!;
 	String url = required_string(download, "url")!;
 	String hash = required_string(download, "sha256")!;
@@ -221,7 +225,10 @@ fn String? validate_registry(Allocator allocator, PackageSource source, NixRunne
 			if (required_string(release, "name")! != name ||
 				required_string(release, "namespace")! != namespace ||
 				required_string(release, "version")! != version) return INVALID_REGISTRY~;
-			(void)required_string(release, "provides")!;
+			if (release.has_key("provides") || release.has_key("toolchain"))
+			{
+				return INVALID_REGISTRY~;
+			}
 			(void)required_string(release, "published")!;
 			if (!release.has_key("download") || !release.get("download")!.is_map())
 			{
@@ -399,7 +406,7 @@ fn RegisteredPackageSource? parse_registered_release(Allocator allocator,
 	{
 		return INVALID_REGISTRY~;
 	}
-	String provides = required_string(release, "provides")!;
+	if (release.has_key("provides") || release.has_key("toolchain")) return INVALID_REGISTRY~;
 	(void)required_string(release, "c3_version")!;
 	(void)required_string(release, "published")!;
 	PackageSource? source = parse_registry_download(allocator, release.get("download")!);
@@ -408,7 +415,6 @@ fn RegisteredPackageSource? parse_registered_release(Allocator allocator,
 		.registry = registry.name.copy(allocator),
 		.id = id.copy(allocator),
 		.version = version.copy(allocator),
-		.provides = provides.copy(allocator),
 		.source = source,
 	};
 }

@@ -78,6 +78,7 @@ fn String? add_dependency(Allocator allocator, Path project_root, PackageSource 
 	{
 		return PROVIDES_MISMATCH~;
 	}
+	registered.provides = name;
 	Metadata project = parse_project(tmem, original, host_c3_target()!)!;
 	bool declared;
 	if (try existing = project.find_source(name))
@@ -188,6 +189,9 @@ fn String? update_dependency(Allocator allocator, Path project_root, String prev
 	String original = ((String)file::load(allocator, project_path)!).copy(allocator);
 	Metadata project = parse_project(tmem, original, host_c3_target()!)!;
 	DependencySpec* existing = project.find_source(previous)!;
+	String manifest_json = fetch_added_manifest(allocator, project_root, selected.source, runner)!;
+	Metadata manifest = parse_manifest(allocator, manifest_json, host_c3_target()!)!;
+	selected.provides = manifest.provides;
 	foreach (dependency : project.sources)
 	{
 		if (previous != selected.provides && dependency.name == selected.provides)
@@ -211,9 +215,6 @@ fn String? update_dependency(Allocator allocator, Path project_root, String prev
 	String edited = original.copy(allocator);
 	if (!same_source)
 	{
-		String manifest_json = fetch_added_manifest(allocator, project_root, selected.source, runner)!;
-		Metadata manifest = parse_manifest(allocator, manifest_json, host_c3_target()!)!;
-		if (manifest.provides != selected.provides) return PROVIDES_MISMATCH~;
 		edited = replace_array_string_at(allocator, edited, "dependencies",
 			previous, selected.provides, "")!;
 		foreach (target : project.targets)

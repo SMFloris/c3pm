@@ -77,7 +77,6 @@ Each version needs a matching `<version>.json` file. For example, `packages/vend
   "name": "raylib",
   "namespace": "vendor",
   "version": "6",
-  "provides": "raylib6",
   "download": {
     "type": "git",
     "url": "git+https://github.com/SMFloris/c3c-vendor.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/libraries/raylib6.c3l",
@@ -90,7 +89,7 @@ Each version needs a matching `<version>.json` file. For example, `packages/vend
 
 ## Source and compatibility fields
 
-`provides` must match the `provides` value in that library's `manifest.json`; it can differ from the registry package name. `download` has `type`, `url`, and `sha256` fields. The hash uses SHA-256 in SRI form (`sha256-` followed by Base64).
+The registry version file does not repeat the C3 library name. When installing or updating, c3pm reads `provides` from the downloaded `.c3l/manifest.json`; it can differ from the registry package name. `download` has `type`, `url`, and `sha256` fields. The hash uses SHA-256 in SRI form (`sha256-` followed by Base64).
 
 For `"type": "git"`, use a `git+https://` or `git+ssh://` URL ending in `#COMMIT/SUBDIR`. `COMMIT` is the full 40-character Git commit ID and `SUBDIR` is the relative path to the `.c3l` directory. The hash covers the checked-out source tree in Nix's NAR format, not the Git commit ID. For example, `nix flake prefetch --json 'git+https://example.com/repo.git?rev=COMMIT'` reports that tree hash.
 

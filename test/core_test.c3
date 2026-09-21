@@ -147,14 +147,18 @@ fn void registry_schema_is_validated_through_reader_test() @test
 		`{"name":"C3 Vendor","version":1,"generated":"2026-09-21T00:00:00Z"}`,
 		`{"packages":[{"id":"vendor/raylib","name":"raylib","namespace":"vendor","latest":"5.5","description":"Raylib bindings","tags":["graphics"]}]}`,
 		`{"id":"vendor/raylib","name":"raylib","namespace":"vendor","description":"Raylib bindings","homepage":"https://raylib.com","repository":"https://github.com/raysan5/raylib","tags":["graphics"],"versions":["5.5"]}`,
-		`{"name":"raylib","namespace":"vendor","version":"5.5","provides":"raylib","download":{"type":"git","url":"git+https://github.com/SMFloris/c3c-vendor.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/libraries/raylib.c3l","sha256":"sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="},"c3_version":">=0.8.1 <0.9.0","published":"2026-09-21T00:00:00Z"}`,
+		`{"name":"raylib","namespace":"vendor","version":"5.5","download":{"type":"git","url":"git+https://github.com/SMFloris/c3c-vendor.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/libraries/raylib.c3l","sha256":"sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="},"c3_version":">=0.8.1 <0.9.0","published":"2026-09-21T00:00:00Z"}`,
 	};
 	FakeNixRunner fake = { .paths = paths, .manifests = documents };
 	NixRunner runner = (NixRunner)&fake;
 	PackageSource source = parse_source(tmem, "github:acme/registry", "main", "", "")!!;
 	validate_registry(tmem, source, runner, "/tmp/probe", "registry")!!;
 	String valid_release = documents[3];
-	documents[3] = `{"name":"raylib","namespace":"vendor","version":"5.5","provides":"raylib","download":{"type":"git","url":"git+https://github.com/SMFloris/c3c-vendor.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/libraries/raylib.c3l","sha256":"sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="},"toolchain":{"c3c":">=0.8.1 <0.9.0"},"published":"2026-09-21T00:00:00Z"}`;
+	documents[3] = `{"name":"raylib","namespace":"vendor","version":"5.5","download":{"type":"git","url":"git+https://github.com/SMFloris/c3c-vendor.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/libraries/raylib.c3l","sha256":"sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="},"toolchain":{"c3c":">=0.8.1 <0.9.0"},"published":"2026-09-21T00:00:00Z"}`;
+	test::@error(validate_registry(tmem, source, runner, "/tmp/probe", "registry"),
+		INVALID_REGISTRY);
+	documents[3] = valid_release;
+	documents[3] = `{"name":"raylib","namespace":"vendor","version":"5.5","provides":"raylib","download":{"type":"git","url":"git+https://github.com/SMFloris/c3c-vendor.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/libraries/raylib.c3l","sha256":"sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="},"c3_version":">=0.8.1 <0.9.0","published":"2026-09-21T00:00:00Z"}`;
 	test::@error(validate_registry(tmem, source, runner, "/tmp/probe", "registry"),
 		INVALID_REGISTRY);
 	documents[3] = valid_release;
@@ -243,16 +247,16 @@ fn void registry_package_reference_resolves_download_source_test() @test
 	RegistryConfig registry = { .name = "default" };
 	RegisteredPackageSource resolved = parse_registered_release(tmem, registry,
 		"vendor/raylib", "6",
-		`{"name":"raylib","namespace":"vendor","version":"6","provides":"raylib","download":{"type":"git","url":"git+https://github.com/SMFloris/c3c-vendor.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/libraries/raylib.c3l","sha256":"sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="},"c3_version":">=0.8.1 <0.9.0","published":"2026-09-21T00:00:00Z"}`)!!;
+		`{"name":"raylib","namespace":"vendor","version":"6","download":{"type":"git","url":"git+https://github.com/SMFloris/c3c-vendor.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/libraries/raylib.c3l","sha256":"sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="},"c3_version":">=0.8.1 <0.9.0","published":"2026-09-21T00:00:00Z"}`)!!;
 	test::eq("default", resolved.registry);
-	test::eq("raylib", resolved.provides);
+	test::eq("", resolved.provides);
 	test::eq(SourceKind.GIT_HTTPS, resolved.source.kind);
 	test::eq("https://github.com/SMFloris/c3c-vendor.git", resolved.source.location);
 	test::eq("3ef0f672970b9bb6a9549470470d37ae25ba55c7", resolved.source.rev);
 	test::eq("sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ=", resolved.source.sha256);
 	test::eq("libraries/raylib.c3l", resolved.source.subdir);
 	test::@error(parse_registered_release(tmem, registry, "vendor/raylib", "5.5",
-		`{"name":"raylib","namespace":"vendor","version":"6","provides":"raylib","download":{"type":"git","url":"git+https://example.com/repo.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/library.c3l","sha256":"sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="}}`),
+		`{"name":"raylib","namespace":"vendor","version":"6","download":{"type":"git","url":"git+https://example.com/repo.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/library.c3l","sha256":"sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="}}`),
 		INVALID_REGISTRY);
 }
 

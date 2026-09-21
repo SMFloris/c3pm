@@ -161,11 +161,6 @@ fn int? run_dep_command(String[] args, Path root, NixRunner runner)
 				return err~;
 			}
 			registered = resolved;
-			if (requested_name.len && requested_name != registered.provides)
-			{
-				return PROVIDES_MISMATCH~;
-			}
-			requested_name = registered.provides;
 			source = registered.source;
 			io::printfn("Resolved %s@%s from registry '%s'", registered.id,
 				registered.version, registered.registry);
@@ -238,14 +233,13 @@ fn int? run_dep_command(String[] args, Path root, NixRunner runner)
 		RegisteredPackageSource previous = read_registry_package_release(tmem,
 			indexed, reference.version, runner)!;
 		DependencySpec* current = project.find_source(reference.name)!;
-		if (previous.provides != reference.name ||
-			!source_equal(previous.source, current.source)) return SOURCE_CONFLICT~;
+		if (!source_equal(previous.source, current.source)) return SOURCE_CONFLICT~;
 		String installed = reference.name;
 		RegisteredPackageSource selected = read_registry_package_release(tmem,
 			indexed, selected_version, runner)!;
 		DependencySpec* existing = project.find_source(installed)!;
 		if (reference.version == selected.version &&
-			installed == selected.provides && source_equal(existing.source, selected.source))
+			source_equal(existing.source, selected.source))
 		{
 			io::printfn("C3 dependency \"%s\" already uses %s@%s",
 				installed, selected.id, selected.version);
