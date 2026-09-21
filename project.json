@@ -19,7 +19,7 @@
 ,
   "vendor": {
     "c3pm": {
-      "toolchain": { "c3c": "0.8.4" }
+      "toolchain": {  }
     }
   }
 }

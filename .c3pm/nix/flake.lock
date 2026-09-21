@@ -1,22 +1,5 @@
 {
   "nodes": {
-    "c3c-source": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1789116328,
-        "narHash": "sha256-SuG27bZAnvtlZQHbrgZKufXawok5f3ePNU7fwmnVaqU=",
-        "owner": "c3lang",
-        "repo": "c3c",
-        "rev": "3c446b5af28f79cef0204c86fbd2c1c4a8b75d32",
-        "type": "github"
-      },
-      "original": {
-        "owner": "c3lang",
-        "ref": "v0.8.4",
-        "repo": "c3c",
-        "type": "github"
-      }
-    },
     "defaultChannel": {
       "locked": {
         "lastModified": 1789546076,
@@ -179,7 +162,6 @@
     },
     "root": {
       "inputs": {
-        "c3c-source": "c3c-source",
         "nix-portable": "nix-portable",
         "nix-portable-nix": [
           "nix-portable",
