@@ -915,13 +915,16 @@ fn void toolchain_and_link_metadata_generation_test() @test
 	test::@check(flake.contains(`c3c-source = {`));
 	test::@check(flake.contains(`url = "github:c3lang/c3c/v0.8.3"`));
 	test::@check(flake.contains(`c3c-binary = {`));
+	test::@check(flake.contains(`c3pmToolchains = forAllSystems (system: { c3c = evaluated.${system}.c3c; })`));
 	test::@check(flake.contains(
 		`url = "https://github.com/c3lang/c3c/releases/download/v0.8.3/c3-linux-static.tar.gz"`));
 	test::@check(flake.contains(`flake = false`));
 	test::@check(shell.contains(`inputs.c3c-source`));
 	test::@check(shell.contains(`inputs.c3c-binary`));
 	test::@check(shell.contains(`inherit project graph c3cSource c3cBinary`));
+	test::@check(shell.contains(`c3c = c3pm.selectC3c project.c3cVersion c3cSource c3cBinary`));
 	test::@check(C3PM_LIB_NIX.contains(`pkgs.c3c.overrideAttrs`));
+	test::@check(C3PM_LIB_NIX.contains(`inherit selectC3c closure`));
 	test::@check(C3PM_LIB_NIX.contains(`src = source`));
 	test::@check(C3PM_LIB_NIX.contains(`pkgs.runCommand "c3c-${version}-binary"`));
 	test::@check(project_nix.contains(`c3cVersion = "0.8.3"`));

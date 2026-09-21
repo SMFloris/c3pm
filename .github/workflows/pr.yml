@@ -125,6 +125,7 @@ jobs:
         run: |
           c3c_path="$(sh scripts/ci-install-c3c.sh '${{ matrix.platform }}')"
           echo "${c3c_path}/bin" >> "${GITHUB_PATH}"
+          echo "C3PM_CI_C3C_PATH=${c3c_path}" >> "${GITHUB_ENV}"
 
       - name: Install musl toolchain
         if: matrix.linux
@@ -183,6 +184,11 @@ jobs:
           cd examples/sqlite-example
 
           "${portable_c3pm}" install
+          if [ "${{ matrix.platform }}" != linux-x86_64 ]; then
+            c3c_system="$(nix eval --raw --impure --expr builtins.currentSystem)"
+            project_c3c="$(nix eval --raw "path:${PWD}/.c3pm/nix#c3pmToolchains.${c3c_system}.c3c.outPath")"
+            test "${project_c3c}" = "${C3PM_CI_C3C_PATH}"
+          fi
           "${portable_c3pm}" shell -- c3c clean
           "${portable_c3pm}" shell -- c3c build
           test -x build/sqlite_example

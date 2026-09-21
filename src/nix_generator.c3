@@ -274,6 +274,7 @@ fn String generate_flake_nix(Allocator allocator, Graph* graph, Metadata* projec
 		"        in import ./shell.nix { inherit pkgs inputs; });\n"
 		"    in {\n"
 		"      devShells = forAllSystems (system: { default = evaluated.${system}.shell; });\n"
+		"      c3pmToolchains = forAllSystems (system: { c3c = evaluated.${system}.c3c; });\n"
 		"      packages = forAllSystems (system:\n"
 		"        evaluated.${system}.packages // { c3pmLibs = evaluated.${system}.c3pmLibs; });\n"
 	);
@@ -354,6 +355,7 @@ fn String generate_shell_nix(Allocator allocator, Graph* graph, Metadata* projec
 		"  projectSource = ./project-source;\n"
 		"in {\n"
 		"  inherit c3pm project graph c3pmLibs projectSource;\n"
+		"  c3c = c3pm.selectC3c project.c3cVersion c3cSource c3cBinary;\n"
 		"  shell = c3pm.mkShell { inherit project graph c3cSource c3cBinary; };\n"
 	);
 	out.append("  packages = {\n");
@@ -510,6 +512,6 @@ EOF
       '';
     };
 in {
-  inherit closure collectInputs mkC3LibTree mkShell c3ProjectBuilder c3LinkedProjectBuilder;
+  inherit selectC3c closure collectInputs mkC3LibTree mkShell c3ProjectBuilder c3LinkedProjectBuilder;
 }
 `;
