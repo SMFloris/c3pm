@@ -33,11 +33,11 @@
     "c3pm_src_github_smfloris_c3c_vendor_4078588a": {
       "flake": false,
       "locked": {
-        "lastModified": 1789764062,
-        "narHash": "sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ=",
+        "lastModified": 1790005626,
+        "narHash": "sha256-PbEw6iBZT95ACCLlRFMUzumsjFbCaS3tXtMhbRb1+Uo=",
         "owner": "SMFloris",
         "repo": "c3c-vendor",
-        "rev": "3ef0f672970b9bb6a9549470470d37ae25ba55c7",
+        "rev": "6e680c169902ac94d39e492da15bb601fa839578",
         "type": "github"
       },
       "original": {
