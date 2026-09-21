@@ -97,12 +97,38 @@ fn void print_dep_help()
 {
 	io::printn(
 		"Usage:\n"
-		"  c3pm add SOURCE [options]  (alias for c3pm dep add)\n"
+		"  c3pm add SOURCE|[NAMESPACE/]NAME [options]  (alias for c3pm dep add)\n"
 		"  c3pm remove NAME [--for-target TARGET]  (alias for c3pm dep remove)\n"
-		"  c3pm dep add SOURCE|NAMESPACE/NAME [--rev REF] [--sha256 HASH] [--subdir PATH]\n"
+		"  c3pm show [NAMESPACE/]NAME  (alias for c3pm dep show)\n"
+		"  c3pm dep add SOURCE|[NAMESPACE/]NAME [--rev REF] [--sha256 HASH] [--subdir PATH]\n"
 		"                        [--name NAME] [--for-target TARGET]\n"
+		"  c3pm dep show [NAMESPACE/]NAME\n"
 		"  c3pm dep remove NAME [--for-target TARGET]\n"
 		"  c3pm dep list [--for-target TARGET]");
+}
+
+fn int? run_dep_show_command(String[] args, NixRunner runner)
+{
+	if (args.len != 4 || args[2] != "show" || !is_registry_package_query(args[3]))
+	{
+		print_dep_help();
+		return 2;
+	}
+	IndexedRegistryPackage indexed = find_indexed_registry_package(tmem, args[3])!;
+	RegistryPackageDetails package = read_registry_package_details(tmem, indexed, runner)!;
+	io::printfn("Package:     %s\nRegistry:    %s\nLatest:      %s\nDescription: %s",
+		package.id, indexed.registry.name, indexed.package.latest, package.description);
+	if (package.homepage.len) io::printfn("Homepage:    %s", package.homepage);
+	if (package.repository.len) io::printfn("Repository:  %s", package.repository);
+	if (package.tags.len)
+	{
+		io::print("Tags:        ");
+		foreach (i, tag : package.tags) io::printf("%s%s", i ? ", " : "", tag);
+		io::printn("");
+	}
+	io::printn("Versions:");
+	foreach (version : package.versions) io::printfn("  %s", version);
+	return 0;
 }
 
 fn int? run_dep_command(String[] args, Path root, NixRunner runner)
@@ -112,7 +138,7 @@ fn int? run_dep_command(String[] args, Path root, NixRunner runner)
 		SourceOptions options = parse_dependency_options(args, 3)!;
 		PackageSource source;
 		String requested_name = options.name;
-		if (is_registry_package_id(options.value))
+		if (is_registry_package_query(options.value))
 		{
 			if (options.rev.len || options.sha256.len || options.subdir.len)
 			{

@@ -37,6 +37,12 @@ fn void dependency_command_aliases_are_normalized_test() @test
 
 	String[] unchanged = { "c3pm", "link", "add", "sqlite3" };
 	test::eq(unchanged, normalize_command_aliases(tmem, unchanged));
+
+	String[] show = normalize_command_aliases(tmem, { "c3pm", "show", "vendor/raylib" });
+	test::eq(4, show.len);
+	test::eq("dep", show[1]);
+	test::eq("show", show[2]);
+	test::eq("vendor/raylib", show[3]);
 }
 
 fn void combined_list_target_filter_is_parsed_test() @test
@@ -162,8 +168,11 @@ fn void default_registry_source_is_canonical_test() @test
 fn void registry_package_reference_resolves_download_source_test() @test
 {
 	test::@check(is_registry_package_id("vendor/raylib"));
+	test::@check(is_registry_package_query("raylib"));
+	test::@check(is_registry_package_query("vendor/raylib"));
 	test::@check(!is_registry_package_id("raylib"));
 	test::@check(!is_registry_package_id("github:owner/repo"));
+	test::@check(!is_registry_package_query("vendor/raylib/6"));
 	RegistryConfig registry = { .name = "default" };
 	RegisteredPackageSource resolved = parse_registered_release(tmem, registry,
 		"vendor/raylib", "6",

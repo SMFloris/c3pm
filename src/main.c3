@@ -41,6 +41,10 @@ fn int? run_command(String[] args)
 		if (catch selected) return 1;
 		PortableNixRunner portable = selected;
 		NixRunner runner = (NixRunner)&portable;
+		if (args[1] == "dep" && args.len >= 3 && args[2] == "show")
+		{
+			return run_dep_show_command(args, runner);
+		}
 		Path root = find_project_root(tmem, path::tcwd()!)!;
 		switch (args[1])
 		{
@@ -74,7 +78,10 @@ fn int? run_command(String[] args)
 
 fn String[] normalize_command_aliases(Allocator allocator, String[] args)
 {
-	if (args.len < 2 || (args[1] != "add" && args[1] != "remove")) return args;
+	if (args.len < 2 || (args[1] != "add" && args[1] != "remove" && args[1] != "show"))
+	{
+		return args;
+	}
 	List{String} normalized;
 	normalized.init(allocator, args.len + 1);
 	normalized.push(args[0]);
@@ -90,11 +97,13 @@ fn void print_help()
 		"Usage: c3pm <command> [options]\n"
 		"\n"
 		"Commands:\n"
-		"  add SOURCE|NAMESPACE/NAME [options]  Alias for dep add\n"
+		"  add SOURCE|[NAMESPACE/]NAME [options]  Alias for dep add\n"
 		"  remove NAME [--for-target TARGET]  Alias for dep remove\n"
+		"  show [NAMESPACE/]NAME        Alias for dep show\n"
 		"  list [--for-target TARGET]     List dependencies and links\n"
-		"  dep add SOURCE|NAMESPACE/NAME [options]\n"
+		"  dep add SOURCE|[NAMESPACE/]NAME [options]\n"
 		"  dep remove NAME [--for-target TARGET]\n"
+		"  dep show [NAMESPACE/]NAME\n"
 		"  dep list [--for-target TARGET]\n"
 		"  link add NAME [options]\n"
 		"  link remove NAME [--for-target TARGET]\n"

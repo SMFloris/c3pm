@@ -22,6 +22,22 @@ struct RegisteredPackageSource
 	PackageSource source;
 }
 
+struct IndexedRegistryPackage
+{
+	RegistryConfig registry;
+	SearchPackage package;
+}
+
+struct RegistryPackageDetails
+{
+	String id;
+	String description;
+	String homepage;
+	String repository;
+	String[] tags;
+	String[] versions;
+}
+
 fn Object*? parse_registry_json(Allocator allocator, String text)
 {
 	Object*? parsed = json::parse(allocator, text);
@@ -277,6 +293,45 @@ fn bool is_registry_package_id(String value)
 	return parts.len == 2 && valid_library_name(parts[0]) && valid_library_name(parts[1]);
 }
 
+fn bool is_registry_package_query(String value)
+{
+	return valid_library_name(value) || is_registry_package_id(value);
+}
+
+fn IndexedRegistryPackage? find_indexed_registry_package(Allocator allocator, String query)
+{
+	if (!is_registry_package_query(query)) return INVALID_ARGUMENTS~;
+	bool qualified = is_registry_package_id(query);
+	UserConfig config = load_user_config(allocator)!;
+	if (!config.registries.len) add_default_registry(&config)!;
+	IndexedRegistryPackage match;
+	bool found;
+	sz[] sorted = sorted_registry_indices(tmem, config.registries);
+	foreach (registry_index : sorted)
+	{
+		RegistryConfig registry = config.registries[registry_index];
+		String index_path = registry_index_path(tmem, registry.name)!;
+		if (!file::is_file(index_path))
+		{
+			io::eprintfn("c3pm: registry '%s' is not indexed; run `c3pm registry update %s`.",
+				registry.name, registry.name);
+			continue;
+		}
+		String contents = (String)file::load(tmem, index_path)!;
+		SearchPackage[] packages = load_search_packages(allocator, registry.name, contents)!;
+		foreach (package : packages)
+		{
+			bool selected = qualified ? package.id == query : package.name == query;
+			if (!selected) continue;
+			if (found) return AMBIGUOUS_REGISTRY_PACKAGE~;
+			found = true;
+			match = { .registry = registry, .package = package };
+		}
+	}
+	if (!found) return NOT_FOUND~;
+	return match;
+}
+
 fn RegisteredPackageSource? parse_registered_release(Allocator allocator,
 	RegistryConfig registry, String id, String version, String release_text)
 {
@@ -302,44 +357,40 @@ fn RegisteredPackageSource? parse_registered_release(Allocator allocator,
 	};
 }
 
-fn RegisteredPackageSource? resolve_registry_package(Allocator allocator, String id,
+fn RegisteredPackageSource? resolve_registry_package(Allocator allocator, String query,
 	NixRunner runner)
 {
-	if (!is_registry_package_id(id)) return INVALID_ARGUMENTS~;
-	UserConfig config = load_user_config(tmem)!;
-	if (!config.registries.len) add_default_registry(&config)!;
-	RegistryConfig selected;
-	String latest;
-	bool found;
-	sz[] sorted = sorted_registry_indices(tmem, config.registries);
-	foreach (registry_index : sorted)
-	{
-		RegistryConfig registry = config.registries[registry_index];
-		String index_path = registry_index_path(tmem, registry.name)!;
-		if (!file::is_file(index_path))
-		{
-			io::eprintfn("c3pm: registry '%s' is not indexed; run `c3pm registry update %s`.",
-				registry.name, registry.name);
-			continue;
-		}
-		String contents = (String)file::load(tmem, index_path)!;
-		SearchPackage[] packages = load_search_packages(tmem, registry.name, contents)!;
-		foreach (package : packages)
-		{
-			if (package.id != id) continue;
-			if (found) return AMBIGUOUS_REGISTRY_PACKAGE~;
-			found = true;
-			selected = registry;
-			latest = package.latest;
-		}
-	}
-	if (!found) return NOT_FOUND~;
-
+	IndexedRegistryPackage indexed = find_indexed_registry_package(tmem, query)!;
+	String id = indexed.package.id;
+	String latest = indexed.package.latest;
 	String[] parts = id.tsplit("/");
 	String relative = string::format(tmem, "packages/%s/%s/%s.json",
 		parts[0], parts[1], latest);
-	String release_text = read_registry_file(tmem, selected, relative, runner)!;
-	return parse_registered_release(allocator, selected, id, latest, release_text);
+	String release_text = read_registry_file(tmem, indexed.registry, relative, runner)!;
+	return parse_registered_release(allocator, indexed.registry, id, latest, release_text);
+}
+
+fn RegistryPackageDetails? read_registry_package_details(Allocator allocator,
+	IndexedRegistryPackage indexed, NixRunner runner)
+{
+	String[] parts = indexed.package.id.tsplit("/");
+	String relative = string::format(tmem, "packages/%s/%s/package.json", parts[0], parts[1]);
+	String text = read_registry_file(tmem, indexed.registry, relative, runner)!;
+	Object* package = parse_registry_json(tmem, text)!;
+	if (required_string(package, "id")! != indexed.package.id ||
+		required_string(package, "name")! != indexed.package.name ||
+		required_string(package, "namespace")! != indexed.package.namespace)
+	{
+		return INVALID_REGISTRY~;
+	}
+	return {
+		.id = indexed.package.id.copy(allocator),
+		.description = registry_string(package, "description")!.copy(allocator),
+		.homepage = registry_string(package, "homepage")!.copy(allocator),
+		.repository = registry_string(package, "repository")!.copy(allocator),
+		.tags = registry_string_array(allocator, package, "tags")!,
+		.versions = registry_string_array(allocator, package, "versions", false)!,
+	};
 }
 
 fn String? validate_registry_source(PackageSource source, String name)

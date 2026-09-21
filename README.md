@@ -65,8 +65,9 @@ With the portable Nix backend, the first Nix operation initializes `nix-portable
 Run c3pm from the directory containing `project.json` or from any directory below it. c3pm finds the project root automatically.
 
 ```text
-c3pm add SOURCE|NAMESPACE/NAME [options]
+c3pm add SOURCE|[NAMESPACE/]NAME [options]
 c3pm remove NAME [--for-target TARGET]
+c3pm show [NAMESPACE/]NAME
 c3pm list [--for-target TARGET]
 c3pm dep <add|remove|list> ...
 c3pm link <add|remove|list> ...
@@ -82,6 +83,7 @@ c3pm bundle [TARGET] [--output PATH]
 | --- | --- |
 | `c3pm add` | Alias for `c3pm dep add`. |
 | `c3pm remove` | Alias for `c3pm dep remove`. |
+| `c3pm show` | Alias for `c3pm dep show`; display registry package metadata and versions. |
 | `c3pm list` | List both C3 dependencies and links. |
 | [`c3pm dep`](#c3-dependencies) | Add, list, or remove C3 source dependencies. |
 | [`c3pm link`](#linking-libraries-and-projects) | Manage native packages, Nix definitions, and linked C3 library targets. |
@@ -217,6 +219,7 @@ All query words must match the package ID, name, namespace, description, or tags
 ```sh
 c3pm dep add github:OWNER/REPO --rev REF [--subdir PATH]
 c3pm dep add NAMESPACE/NAME
+c3pm dep add NAME
 ```
 
 Example:
@@ -231,9 +234,17 @@ When the argument has the `namespace/name` form, c3pm resolves it through the lo
 
 ```sh
 c3pm dep add vendor/raylib
+c3pm dep add raylib
 ```
 
-Run `c3pm registry update` to refresh available versions. If more than one registry contains the same package ID, resolution fails as ambiguous.
+The shorter name works only when exactly one package with that name exists across every namespace and configured registry. Run `c3pm registry update` to refresh available versions. Duplicate matches fail as ambiguous.
+
+Inspect a package and all its available versions with either command:
+
+```sh
+c3pm dep show vendor/raylib
+c3pm show raylib
+```
 
 `dep add`:
 
