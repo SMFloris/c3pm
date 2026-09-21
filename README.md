@@ -37,9 +37,61 @@ curl --fail --location \
   https://github.com/SMFloris/c3pm/releases/latest/download/install.sh | sh -
 ```
 
-### 2. Try the example project
+### 2. Build a raylib hello world
 
-Clone the repository, then run the SQLite todo example:
+Create a new C3 project:
+
+```sh
+cd ~/Projects
+c3c init raylib_hello
+cd raylib_hello
+```
+
+Search the registry and add raylib by its unique package name:
+
+```sh
+c3pm search raylib
+c3pm add raylib
+```
+
+Replace `src/main.c3` with:
+
+```c3
+module raylib_hello;
+
+import raylib6::rl;
+
+fn void main()
+{
+	rl::init_window(800, 450, "raylib hello");
+	defer rl::close_window();
+	rl::set_target_fps(60);
+
+	while (!rl::window_should_close())
+	{
+		rl::begin_drawing();
+		rl::clear_background(rl::RAYWHITE);
+		rl::draw_text("Hello, raylib!", 290, 210, 32, rl::DARKBLUE);
+		rl::end_drawing();
+	}
+}
+```
+
+Build and run it inside the resolved development environment:
+
+```sh
+c3pm shell -- c3c run
+```
+
+The application opens an 800×450 window displaying “Hello, raylib!”. Press Escape or close the window to exit.
+
+With the portable Nix backend, the first Nix operation initializes `nix-portable` and may fetch the inputs in [`.c3pm/nix/flake.lock`](#lock-file). Later commands reuse that store and lock.
+
+## Examples
+
+### SQLite todo application
+
+Clone the repository, then open the included SQLite example:
 
 ```sh
 git clone https://github.com/SMFloris/c3pm.git
@@ -57,8 +109,6 @@ c3pm shell -- ./build/sqlite_example list
 c3pm bundle
 ./dist/sqlite_example list
 ```
-
-With the portable Nix backend, the first Nix operation initializes `nix-portable` and may fetch the inputs in [`.c3pm/nix/flake.lock`](#lock-file). Later commands reuse that store and lock.
 
 ## Command overview
 
