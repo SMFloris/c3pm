@@ -1,3 +1,3 @@
 module c3pm;
 
-const String C3PM_VERSION = "0.3.5";
+const String C3PM_VERSION = "0.3.6";
