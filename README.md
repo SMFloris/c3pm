@@ -16,7 +16,7 @@
 It reads the standard C3 dependency graph and adds `vendor.c3pm` metadata for sources, toolchains, and native packages. c3pm uses those inputs to create a reproducible development and build environment.
 
 > [!WARNING]
-> **Current published release: Linux x86_64.** Native CI and release builds target Linux ARM64 and macOS ARM64 too; treat them as supported only after their native end-to-end checks pass and a release publishes those binaries. macOS Intel is supported through source builds, without a CI job or automated release binary. On Windows, use WSL2 rather than native Windows.
+> Release builds target Linux x86_64/ARM64 and macOS ARM64. macOS Intel is [source-build only](#macos-intel-source-build-only); on Windows, use WSL2.
 
 > [!NOTE]
 > **Default nixpkgs target:** nixpkgs-unstable (nixpkgs 26.05 on macOS Intel).

@@ -4,7 +4,7 @@ description: "Install c3pm for the C3 programming language and choose a Nix back
 permalink: /docs/getting-started/installation/
 ---
 
-The current published release supports Linux x86_64. Native CI and the release pipeline also target Linux ARM64 and macOS ARM64; only count those platforms as supported after their native end-to-end jobs pass and their release binaries are available. macOS Intel is supported through [source builds](https://github.com/SMFloris/c3pm#macos-intel-source-build-only) but is not included in CI or automated releases. On Windows, use WSL2. The Linux release binaries run without an existing C3 compiler or compatible system libc; building projects uses a separate Nix backend.
+Release builds target Linux x86_64/ARM64 and macOS ARM64. On macOS Intel, [build from source](https://github.com/SMFloris/c3pm#macos-intel-source-build-only). On Windows, use WSL2.
 
 ## Install the latest release
 

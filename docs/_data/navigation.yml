@@ -12,8 +12,6 @@
   items:
     - title: Search and add packages
       url: /docs/guides/packages/
-    - title: Package C3 libraries
-      url: /docs/guides/packaging/
     - title: Link libraries and projects
       url: /docs/guides/linking/
     - title: Configure toolchains
@@ -24,6 +22,8 @@
       url: /docs/guides/bundles/
     - title: Manage registries
       url: /docs/guides/registries/
+    - title: Package C3 libraries
+      url: /docs/guides/packaging/
 - title: Examples
   items:
     - title: SQLite application
