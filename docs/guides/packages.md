@@ -99,7 +99,16 @@ c3pm dep update raylib
 
 The update replaces the dependency's pinned source in `project.json` and synchronizes the project. It also updates the release recorded under `vendor.c3pm.registry`. If the new release has a different C3 `provides` name, such as `raylib55` becoming `raylib6`, c3pm changes the dependency name in project targets too. Update your source imports to the new module name when needed.
 
-For projects created before registry references were recorded, c3pm matches the installed source against published versions of the selected package. If it cannot identify one installed version unambiguously, it leaves the project unchanged.
+Registry updates require a recorded `vendor.c3pm.registry` reference. c3pm does not infer one by matching a directly added source against a registry package.
+
+For a dependency added directly from GitHub or Git, specify its C3 dependency name and the new revision explicitly. For an HTTPS archive, specify its new SHA-256 hash:
+
+```sh
+c3pm dep update sqlite3 --rev v3.50.0
+c3pm dep update mybinding --sha256 sha256-NEW_HASH
+```
+
+Direct updates retain the original source location and `subdir`. The new source must still provide the same C3 dependency name. A `path:` dependency has no revision or archive hash to update; change the files at that path and run `c3pm install`.
 
 ## List dependencies and links
 

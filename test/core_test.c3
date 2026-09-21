@@ -554,20 +554,17 @@ fn void registry_dependency_update_replaces_names_sources_and_rolls_back_test() 
 		"libraries/raylib55.c3l", "")!!;
 	PackageSource new_source = parse_source(tmem, "github:someone/c3-libs", "main",
 		"libraries/raylib6.c3l", "")!!;
-	(void)add_dependency(tmem, root, old_source, "raylib55", "", runner)!!;
-	(void)add_dependency(tmem, root, old_source, "raylib55", "server", runner)!!;
-	String before = (String)file::load(tmem, project_path)!!;
-	Metadata project = parse_project(tmem, before, "linux-x64")!!;
 	RegisteredPackageSource[] releases = {
 		{ .registry = "default", .id = "vendor/raylib", .version = "5.5", .provides = "raylib55", .source = old_source },
 		{ .registry = "default", .id = "vendor/raylib", .version = "6", .provides = "raylib6", .source = new_source },
 	};
-	test::eq("raylib55", find_installed_registry_dependency(&project, releases)!!);
-	test::@error(find_installed_registry_dependency(&project, releases[1..]), NOT_FOUND);
-	test::eq("raylib55", update_dependency(tmem, root, "raylib55", releases[0], runner)!!);
+	(void)add_dependency(tmem, root, old_source, "raylib55", "", runner, releases[0])!!;
+	(void)add_dependency(tmem, root, old_source, "raylib55", "server", runner)!!;
 	Metadata marked = parse_project(tmem, (String)file::load(tmem, project_path)!!,
 		"linux-x64")!!;
 	test::eq("5.5", find_registered_dependency(&marked, "raylib")!!.version);
+	test::@error(update_direct_dependency(tmem, root, "raylib55", "v2", "", runner),
+		INVALID_ARGUMENTS);
 	test::eq("raylib6", update_dependency(tmem, root, "raylib55", releases[1], runner)!!);
 	String updated = (String)file::load(tmem, project_path)!!;
 	test::@check(updated.contains("// Keep this comment when the binding name changes."));
@@ -587,6 +584,78 @@ fn void registry_dependency_update_replaces_names_sources_and_rolls_back_test() 
 	fake.fail_build = true;
 	test::@error(update_dependency(tmem, root, "raylib6", releases[0], runner), NIX_FAILED);
 	test::eq(updated, (String)file::load(tmem, project_path)!!);
+}
+
+fn void direct_dependency_update_requires_explicit_revision_or_hash_test() @test
+{
+	String scratch = "/tmp/c3pm-v2-direct-update-test";
+	Path root = scratch.to_tpath()!!;
+	if (path::exists(root)) (void)path::rmtree(root);
+	defer if (path::exists(root)) (void)path::rmtree(root);
+	path::mkdir(root, true)!!;
+	String project_path = string::format(tmem, "%s/project.json", scratch);
+	file::save(project_path, `{"dependencies":[]}`)!!;
+	FakeNixRunner fake = {
+		.paths = { "libraries/sqlite3.c3l" },
+		.manifests = { `{"provides":"sqlite3"}` },
+	};
+	NixRunner runner = (NixRunner)&fake;
+	PackageSource source = parse_source(tmem, "github:someone/c3-libs", "v1",
+		"libraries/sqlite3.c3l", "")!!;
+	(void)add_dependency(tmem, root, source, "sqlite3", "", runner)!!;
+	Metadata before = parse_project(tmem, (String)file::load(tmem, project_path)!!,
+		"linux-x64")!!;
+	test::eq(0, before.registry_dependencies.len);
+	test::@error(find_registered_dependency(&before, "sqlite3"), NOT_FOUND);
+	test::eq(1, run_dep_command({ "c3pm", "dep", "update", "sqlite3" }, root, runner)!!);
+	test::eq(1, run_dep_command({ "c3pm", "dep", "update", "vendor/sqlite3" }, root, runner)!!);
+	test::@error(update_direct_dependency(tmem, root, "sqlite3", "", "", runner),
+		INVALID_ARGUMENTS);
+	test::@error(update_direct_dependency(tmem, root, "sqlite3", "", "sha256-test", runner),
+		INVALID_ARGUMENTS);
+	test::@error(update_direct_dependency(tmem, root, "sqlite3", "bad ref", "", runner),
+		INVALID_SOURCE);
+	test::eq("sqlite3", update_direct_dependency(tmem, root, "sqlite3", "v2", "", runner)!!);
+	String updated = (String)file::load(tmem, project_path)!!;
+	Metadata changed = parse_project(tmem, updated, "linux-x64")!!;
+	test::eq("v2", changed.find_source("sqlite3")!!.source.rev);
+	test::eq("libraries/sqlite3.c3l", changed.find_source("sqlite3")!!.source.subdir);
+	test::eq(0, changed.registry_dependencies.len);
+	fake.fail_build = true;
+	test::@error(update_direct_dependency(tmem, root, "sqlite3", "v3", "", runner),
+		NIX_FAILED);
+	test::eq(updated, (String)file::load(tmem, project_path)!!);
+}
+
+fn void direct_archive_update_changes_hash_only_test() @test
+{
+	String scratch = "/tmp/c3pm-v2-direct-archive-update-test";
+	Path root = scratch.to_tpath()!!;
+	if (path::exists(root)) (void)path::rmtree(root);
+	defer if (path::exists(root)) (void)path::rmtree(root);
+	path::mkdir(root, true)!!;
+	String project_path = string::format(tmem, "%s/project.json", scratch);
+	file::save(project_path, `{"dependencies":[]}`)!!;
+	FakeNixRunner fake = {
+		.paths = { "binding.c3l" },
+		.manifests = { `{"provides":"binding"}` },
+	};
+	NixRunner runner = (NixRunner)&fake;
+	PackageSource source = parse_source(tmem,
+		"archive+https://example.com/binding.tar.gz", "", "binding.c3l", "sha256-old")!!;
+	(void)add_dependency(tmem, root, source, "binding", "", runner)!!;
+	test::@error(update_direct_dependency(tmem, root, "binding", "v2", "", runner),
+		INVALID_ARGUMENTS);
+	test::@error(update_direct_dependency(tmem, root, "binding", "", "bad", runner),
+		INVALID_SOURCE);
+	test::eq("binding", update_direct_dependency(tmem, root, "binding", "",
+		"sha256-new", runner)!!);
+	Metadata changed = parse_project(tmem, (String)file::load(tmem, project_path)!!,
+		"linux-x64")!!;
+	PackageSource updated = changed.find_source("binding")!!.source;
+	test::eq("https://example.com/binding.tar.gz", updated.location);
+	test::eq("binding.c3l", updated.subdir);
+	test::eq("sha256-new", updated.sha256);
 }
 
 fn void registry_add_records_reference_and_remove_clears_it_test() @test

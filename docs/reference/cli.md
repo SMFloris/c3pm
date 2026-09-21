@@ -38,12 +38,13 @@ configure toolchain → add dependencies/links → install → build/test in she
 c3pm dep add SOURCE|[NAMESPACE/]NAME[@VERSION] [--rev REF] [--sha256 HASH]
              [--subdir PATH] [--name NAME] [--for-target TARGET]
 c3pm dep update [NAMESPACE/]NAME[@VERSION]
+c3pm dep update NAME --rev REF|--sha256 HASH
 c3pm dep remove NAME [--for-target TARGET]
 c3pm dep show [NAMESPACE/]NAME
 c3pm dep list [--for-target TARGET]
 ```
 
-For a direct source, `--rev` selects a Git reference, `--sha256` supplies an archive's SRI hash, and `--subdir` selects its library directory. Registry names use the published source declaration and do not accept these three overrides. Append `@VERSION` to a registry name to select an exact published version, for example `c3pm dep add raylib@5.5`. Without it, c3pm uses `latest`. Use `c3pm dep update raylib@6` to change an installed package to version 6, or `c3pm dep update raylib` to use the latest. `--name` asserts the expected manifest `provides` value. `--for-target` limits a dependency to one project target.
+For a direct source, `--rev` selects a Git reference, `--sha256` supplies an archive's SRI hash, and `--subdir` selects its library directory. Registry names use the published source declaration and do not accept these three overrides. Append `@VERSION` to a registry name to select an exact published version, for example `c3pm dep add raylib@5.5`. Without it, c3pm uses `latest`. Use `c3pm dep update raylib@6` to change an installed registry package to version 6, or `c3pm dep update raylib` to use the latest. Registry updates require a recorded registry reference; c3pm does not infer one from a directly added source. To update a direct Git dependency, use its C3 name and `--rev REF`; for a direct HTTPS archive, use `--sha256 HASH`. The source location and `subdir` remain unchanged. `--name` asserts the expected manifest `provides` value when adding. `--for-target` limits a dependency to one project target.
 
 See [Search and add packages]({{ '/docs/guides/packages/' | relative_url }}) for accepted source forms and package-name resolution.
 

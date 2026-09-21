@@ -103,6 +103,7 @@ fn void print_help()
 		"  list [--for-target TARGET]     List dependencies and links\n"
 		"  dep add SOURCE|[NAMESPACE/]NAME[@VERSION] [options]\n"
 		"  dep update [NAMESPACE/]NAME[@VERSION]\n"
+		"  dep update NAME --rev REF|--sha256 HASH\n"
 		"  dep remove NAME [--for-target TARGET]\n"
 		"  dep show [NAMESPACE/]NAME\n"
 		"  dep list [--for-target TARGET]\n"

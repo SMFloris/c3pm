@@ -12,7 +12,7 @@ Starting with the project's dependencies, c3pm reads each source's `.c3l/manifes
 
 For a registry package, c3pm resolves the indexed `latest` version or an explicitly requested `@VERSION` to a concrete source declaration. The library manifest then supplies the dependency graph and native requirements.
 
-The project records both the pinned source and its registry reference under `vendor.c3pm.registry`. `c3pm dep update` uses that reference to find the installed package and select a new release. Older projects without the reference are matched against published source declarations.
+The project records both the pinned source and its registry reference under `vendor.c3pm.registry`. `c3pm dep update` uses that reference to find the installed package and select a new release. It does not match unreferenced sources against registry releases. Direct-source updates require an explicit new Git revision or archive hash.
 
 ## Generate and validate the environment
 

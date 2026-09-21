@@ -103,6 +103,7 @@ fn void print_dep_help()
 		"  c3pm dep add SOURCE|[NAMESPACE/]NAME[@VERSION] [--rev REF] [--sha256 HASH] [--subdir PATH]\n"
 		"                        [--name NAME] [--for-target TARGET]\n"
 		"  c3pm dep update [NAMESPACE/]NAME[@VERSION]\n"
+		"  c3pm dep update NAME --rev REF|--sha256 HASH\n"
 		"  c3pm dep show [NAMESPACE/]NAME\n"
 		"  c3pm dep remove NAME [--for-target TARGET]\n"
 		"  c3pm dep list [--for-target TARGET]");
@@ -182,6 +183,18 @@ fn int? run_dep_command(String[] args, Path root, NixRunner runner)
 	}
 	if (args.len >= 3 && args[2] == "update")
 	{
+		if (args.len == 6)
+		{
+			String rev;
+			String sha256;
+			if (args[4] == "--rev") { rev = args[5]; }
+			else if (args[4] == "--sha256") { sha256 = args[5]; }
+			else { return INVALID_ARGUMENTS~; }
+			String updated = update_direct_dependency(tmem, root, args[3], rev,
+				sha256, runner)!;
+			io::printfn("Updated direct C3 dependency \"%s\"", updated);
+			return 0;
+		}
 		if (args.len != 4) return INVALID_ARGUMENTS~;
 		RegistryPackageSpec package = parse_registry_package_spec(args[3])!;
 		if (!package.query.len) return INVALID_ARGUMENTS~;
@@ -190,7 +203,6 @@ fn int? run_dep_command(String[] args, Path root, NixRunner runner)
 		Metadata project = parse_project(tmem, project_json, host_c3_target()!)!;
 		RegistryDependencySpec? stored = find_registered_dependency(&project, package.query);
 		RegistryDependencySpec reference;
-		bool has_stored;
 		if (catch err = stored)
 		{
 			if (err == AMBIGUOUS_DEPENDENCY_UPDATE)
@@ -199,12 +211,17 @@ fn int? run_dep_command(String[] args, Path root, NixRunner runner)
 					package.query);
 				return 1;
 			}
-			if (err != NOT_FOUND) return err~;
+			if (err == NOT_FOUND)
+			{
+				io::eprintfn("c3pm: '%s' has no recorded registry reference; use `c3pm dep update NAME --rev REF` or `--sha256 HASH` for a direct dependency.",
+					package.query);
+				return 1;
+			}
+			return err~;
 		}
-		else { reference = stored; has_stored = true; }
-		IndexedRegistryPackage indexed = has_stored
-			? find_indexed_registry_package(tmem, reference.package_id, reference.registry)!
-			: find_indexed_registry_package(tmem, package.query)!;
+		reference = stored;
+		IndexedRegistryPackage indexed = find_indexed_registry_package(tmem,
+			reference.package_id, reference.registry)!;
 		RegistryPackageDetails details = read_registry_package_details(tmem, indexed, runner)!;
 		String? selected_version = select_registry_version(indexed.package.latest,
 			details.versions, package.version);
@@ -218,43 +235,16 @@ fn int? run_dep_command(String[] args, Path root, NixRunner runner)
 			}
 			return err~;
 		}
-		String installed;
-		if (has_stored)
-		{
-			RegisteredPackageSource previous = read_registry_package_release(tmem,
-				indexed, reference.version, runner)!;
-			DependencySpec* current = project.find_source(reference.name)!;
-			if (previous.provides != reference.name ||
-				!source_equal(previous.source, current.source)) return SOURCE_CONFLICT~;
-			installed = reference.name;
-		}
-		else
-		{
-			RegisteredPackageSource[] releases = read_registry_package_releases(tmem,
-				indexed, details, runner)!;
-			String? matched = find_installed_registry_dependency(&project, releases);
-			if (catch err = matched)
-			{
-				if (err == NOT_FOUND)
-				{
-					io::eprintfn("c3pm: no installed version of '%s' matches this registry package.",
-						package.query);
-					return 1;
-				}
-				if (err == AMBIGUOUS_DEPENDENCY_UPDATE)
-				{
-					io::eprintfn("c3pm: multiple installed versions of '%s' match; remove one before updating.",
-						package.query);
-					return 1;
-				}
-				return err~;
-			}
-			installed = matched;
-		}
+		RegisteredPackageSource previous = read_registry_package_release(tmem,
+			indexed, reference.version, runner)!;
+		DependencySpec* current = project.find_source(reference.name)!;
+		if (previous.provides != reference.name ||
+			!source_equal(previous.source, current.source)) return SOURCE_CONFLICT~;
+		String installed = reference.name;
 		RegisteredPackageSource selected = read_registry_package_release(tmem,
 			indexed, selected_version, runner)!;
 		DependencySpec* existing = project.find_source(installed)!;
-		if (has_stored && reference.version == selected.version &&
+		if (reference.version == selected.version &&
 			installed == selected.provides && source_equal(existing.source, selected.source))
 		{
 			io::printfn("C3 dependency \"%s\" already uses %s@%s",
