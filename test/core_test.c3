@@ -797,6 +797,8 @@ fn void bundle_targets_and_flake_outputs_are_generated_test() @test
 		`{ "targets": { "library": { "type": "static-lib" } } }`, "linux-x64")!!;
 	test::@error(select_bundle_target(tmem, &none, ""), NO_EXECUTABLE_TARGET);
 
+	// Keep this bundle-output test independent of the host's default toolchain.
+	project.toolchain.c3c_version = "";
 	Graph graph;
 	String flake = generate_flake_nix(tmem, &graph, &project);
 	String shell = generate_shell_nix(tmem, &graph, &project);
