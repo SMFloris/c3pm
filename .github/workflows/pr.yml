@@ -26,6 +26,36 @@ jobs:
       - name: Run installer tests
         run: sh test/install_script_test.sh
 
+  linux-distro-smoke:
+    name: Installer smoke (${{ matrix.distro }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: Ubuntu
+            image: ubuntu:24.04
+            manager: apt-get
+          - distro: Fedora
+            image: fedora:latest
+            manager: dnf
+          - distro: Alpine
+            image: alpine:latest
+            manager: apk
+          - distro: Arch
+            image: archlinux:latest
+            manager: pacman
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Install through distro bootstrap path
+        run: |
+          docker run --rm -v "${PWD}:/work:ro" -w /work \
+            '${{ matrix.image }}' sh test/distro_installer_smoke.sh '${{ matrix.manager }}'
+
   unit:
     name: C3 unit tests
     runs-on: ubuntu-24.04
@@ -47,15 +77,38 @@ jobs:
         run: c3c test
 
   sqlite-end-to-end:
-    name: SQLite end-to-end
-    runs-on: ubuntu-24.04
+    name: SQLite end-to-end (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux-x86_64
+            linux: true
+            bundled: true
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+            linux: true
+            bundled: true
+          - os: macos-15
+            platform: macos-aarch64
+            linux: false
+            bundled: false
+          - os: macos-15-intel
+            platform: macos-x86_64
+            linux: false
+            bundled: false
+    env:
+      NIXPKGS_REF: github:NixOS/nixpkgs/a32edd7654519351e48e80372a928df336394670
 
     steps:
       - name: Check out source
         uses: actions/checkout@v5
 
       - name: Install C3 compiler
+        if: matrix.platform == 'linux-x86_64'
         run: |
           curl --fail --location --retry 3 \
             "https://github.com/c3lang/c3c/releases/download/v${C3_VERSION}/c3-linux-static.tar.gz" \
@@ -63,21 +116,39 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/c3-linux-static.tar.gz" -C "${RUNNER_TEMP}"
           echo "${RUNNER_TEMP}/c3" >> "${GITHUB_PATH}"
 
+      - name: Install Nix for native compiler
+        if: matrix.platform != 'linux-x86_64'
+        uses: cachix/install-nix-action@v31
+
+      - name: Install pinned C3 compiler
+        if: matrix.platform != 'linux-x86_64'
+        run: |
+          c3c_path="$(sh scripts/ci-install-c3c.sh '${{ matrix.platform }}')"
+          echo "${c3c_path}/bin" >> "${GITHUB_PATH}"
+
       - name: Install musl toolchain
+        if: matrix.linux
         run: |
           sudo apt-get update
           sudo apt-get install --yes musl-tools
 
       - name: Build standalone c3pm executable
         run: |
-          c3c --linux-libc=musl -z -static --cc musl-gcc -O2 build c3pm
-          cp build/c3pm "${RUNNER_TEMP}/c3pm-linux-x86_64"
-          chmod +x "${RUNNER_TEMP}/c3pm-linux-x86_64"
-          test -f "${RUNNER_TEMP}/c3pm-linux-x86_64"
-          test ! -L "${RUNNER_TEMP}/c3pm-linux-x86_64"
-          test -x "${RUNNER_TEMP}/c3pm-linux-x86_64"
-          if readelf -l "${RUNNER_TEMP}/c3pm-linux-x86_64" | grep -q INTERP; then
-            echo "c3pm executable is dynamically linked" >&2
+          c3c --version | grep -F "${C3_VERSION}"
+          c3c test
+          if [ "${{ matrix.linux }}" = true ]; then
+            c3c --linux-libc=musl -z -static --cc musl-gcc -O2 build c3pm
+          else
+            c3c -O2 build c3pm
+          fi
+          cp build/c3pm "${RUNNER_TEMP}/c3pm-${{ matrix.platform }}"
+          chmod +x "${RUNNER_TEMP}/c3pm-${{ matrix.platform }}"
+          test -f "${RUNNER_TEMP}/c3pm-${{ matrix.platform }}"
+          test ! -L "${RUNNER_TEMP}/c3pm-${{ matrix.platform }}"
+          test -x "${RUNNER_TEMP}/c3pm-${{ matrix.platform }}"
+          if [ "${{ matrix.linux }}" = true ] &&
+            readelf -l "${RUNNER_TEMP}/c3pm-${{ matrix.platform }}" | grep -q INTERP; then
+            echo "c3pm Linux executable is dynamically linked" >&2
             exit 1
           fi
 
@@ -86,11 +157,29 @@ jobs:
           export NP_LOCATION="${RUNNER_TEMP}/portable-c3pm-runtime"
           export XDG_CONFIG_HOME="${RUNNER_TEMP}/c3pm-config"
           export XDG_DATA_HOME="${RUNNER_TEMP}/c3pm-data"
-          portable_c3pm="${RUNNER_TEMP}/c3pm-linux-x86_64"
+          portable_c3pm="${RUNNER_TEMP}/c3pm-${{ matrix.platform }}"
 
           "${portable_c3pm}" --version
-          "${portable_c3pm}" toolchain nix use portable
-          "${portable_c3pm}" toolchain nix status | grep -F "Nix backend: portable"
+          if [ "${{ matrix.linux }}" = true ]; then
+            "${portable_c3pm}" toolchain nix use portable
+            "${portable_c3pm}" toolchain nix status | grep -F "Nix backend: portable"
+          else
+            "${portable_c3pm}" toolchain nix use system
+            "${portable_c3pm}" toolchain nix status | grep -F "Nix backend: system"
+            if "${portable_c3pm}" toolchain nix use portable >"${RUNNER_TEMP}/portable-error.log" 2>&1; then
+              echo 'macOS unexpectedly accepted nix-portable' >&2
+              exit 1
+            fi
+            grep -F 'supported on Linux' "${RUNNER_TEMP}/portable-error.log"
+            if "${portable_c3pm}" bundle >"${RUNNER_TEMP}/bundle-error.log" 2>&1; then
+              echo 'macOS unexpectedly accepted bundle' >&2
+              exit 1
+            fi
+            grep -F 'supported on Linux only' "${RUNNER_TEMP}/bundle-error.log"
+          fi
+          "${portable_c3pm}" install
+          "${portable_c3pm}" shell -- c3c build
+          "${portable_c3pm}" shell -- c3c test
           cd examples/sqlite-example
 
           "${portable_c3pm}" install
@@ -110,6 +199,15 @@ jobs:
           test -x build/sqlite_example
           "${portable_c3pm}" shell -- \
             ./build/sqlite_example list | grep -F "pull request lifecycle"
+
+      - name: Bundle SQLite on Linux
+        if: matrix.bundled
+        run: |
+          export NP_LOCATION="${RUNNER_TEMP}/portable-c3pm-runtime"
+          export XDG_CONFIG_HOME="${RUNNER_TEMP}/c3pm-config"
+          export XDG_DATA_HOME="${RUNNER_TEMP}/c3pm-data"
+          cd examples/sqlite-example
+          portable_c3pm="${RUNNER_TEMP}/c3pm-${{ matrix.platform }}"
 
           bundle_log="${RUNNER_TEMP}/sqlite-bundle.log"
           "${portable_c3pm}" bundle \

@@ -8,7 +8,7 @@ permalink: /llms.txt
 
 This c3pm manages packages for the C3 programming language and c3c compiler. It is separate from the older C++ project with the same name.
 
-The current documented release is {{ site.c3pm_version }}. The supported platform is Linux x86_64. c3pm manages C3 source dependencies, native libraries, project toolchains, and portable application bundles through Nix.
+The current documented release is {{ site.c3pm_version }}. The current published platform is Linux x86_64; native CI and release builds target Linux ARM64 and macOS ARM64/Intel as well. WSL2 is the Windows route. Portable Nix and application bundling are Linux-only. c3pm manages C3 source dependencies, native libraries, and project toolchains through Nix.
 
 The links below lead to the official documentation. Package names in a registry use `namespace/name`; a C3 library's manifest `provides` name can differ from its registry package name.
 {% for group in site.data.navigation %}

@@ -4,7 +4,6 @@ set -eu
 umask 022
 
 REPOSITORY=https://github.com/SMFloris/c3pm
-ASSET=c3pm-linux-x86_64
 VERSION=${C3PM_VERSION:-latest}
 INSTALL_DIR=${C3PM_INSTALL_DIR:-${HOME:-}/.local/bin}
 NIX_MODE=${C3PM_NIX_MODE:-auto}
@@ -51,7 +50,7 @@ Options:
   --nix MODE             auto, daemon, single-user, portable, or none
                          (default: auto)
   --yes                  Do not ask for confirmation
-  --no-modify-path       Do not update ~/.profile
+  --no-modify-path       Do not update the shell profile
   --dry-run              Print the plan without changing the system
   -h, --help             Show this help
 
@@ -128,11 +127,23 @@ esac
 
 SYSTEM_NAME=${C3PM_TEST_UNAME_S:-$(uname -s)}
 MACHINE_NAME=${C3PM_TEST_UNAME_M:-$(uname -m)}
-[ "$SYSTEM_NAME" = Linux ] || die "unsupported operating system '$SYSTEM_NAME'; c3pm currently publishes Linux x86_64 releases"
-case $MACHINE_NAME in
-    x86_64|amd64) ;;
-    *) die "unsupported architecture '$MACHINE_NAME'; c3pm currently publishes Linux x86_64 releases" ;;
+case $SYSTEM_NAME:$MACHINE_NAME in
+    Linux:x86_64|Linux:amd64) PLATFORM=linux-x86_64 ;;
+    Linux:aarch64|Linux:arm64) PLATFORM=linux-aarch64 ;;
+    Darwin:arm64|Darwin:aarch64) PLATFORM=macos-aarch64 ;;
+    Darwin:x86_64) PLATFORM=macos-x86_64 ;;
+    *) die "unsupported platform '$SYSTEM_NAME:$MACHINE_NAME'" ;;
 esac
+ASSET=c3pm-$PLATFORM
+PROFILE_FILE=$HOME/.profile
+if [ "$SYSTEM_NAME" = Darwin ]; then
+    PROFILE_FILE=$HOME/.zprofile
+fi
+if [ "$SYSTEM_NAME" = Darwin ]; then
+    case $NIX_MODE in
+        portable|single-user) die "--nix $NIX_MODE is Linux-only; use system Nix or --nix daemon on macOS" ;;
+    esac
+fi
 
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -163,6 +174,10 @@ detect_package_manager() {
 }
 
 ca_certificates_available() {
+    # The macOS system curl uses the Keychain trust store, not a PEM file.
+    if [ "$SYSTEM_NAME" = Darwin ]; then
+        return 0
+    fi
     for certificate_bundle in \
         "${SSL_CERT_FILE:-}" \
         "${NIX_SSL_CERT_FILE:-}" \
@@ -179,7 +194,11 @@ ca_certificates_available() {
 }
 
 bootstrap_needed=0
-for required_command in git curl xz tar; do
+required_commands='git curl tar'
+if [ "$SYSTEM_NAME" = Linux ]; then
+    required_commands='git curl xz tar'
+fi
+for required_command in $required_commands; do
     if ! command_exists "$required_command"; then
         bootstrap_needed=1
     fi
@@ -187,9 +206,13 @@ done
 if ! ca_certificates_available; then
     bootstrap_needed=1
 fi
+if is_true "${C3PM_TEST_MISSING_PREREQUISITES:-0}"; then
+    bootstrap_needed=1
+fi
 
 PACKAGE_MANAGER=
 if [ "$bootstrap_needed" -eq 1 ]; then
+    [ "$SYSTEM_NAME" = Linux ] || die 'missing prerequisites on macOS; install the Xcode Command Line Tools and ensure curl, git, tar, and CA certificates are available'
     PACKAGE_MANAGER=$(detect_package_manager) || die 'git, curl, xz, or tar is missing and no supported package manager was found'
 fi
 
@@ -198,6 +221,10 @@ selinux_is_enforcing() {
 }
 
 daemon_is_supported() {
+    if [ "$SYSTEM_NAME" = Darwin ]; then
+        can_run_as_root
+        return
+    fi
     [ -d /run/systemd/system ] && command_exists systemctl && can_run_as_root && ! selinux_is_enforcing
 }
 
@@ -237,7 +264,9 @@ if find_nix; then
         SELECTED_NIX_MODE=existing
     fi
 elif [ "$NIX_MODE" = auto ]; then
-    if daemon_is_supported; then
+    if [ "$SYSTEM_NAME" = Darwin ]; then
+        SELECTED_NIX_MODE=daemon
+    elif daemon_is_supported; then
         SELECTED_NIX_MODE=daemon
     elif [ "$(id -u)" -eq 0 ]; then
         SELECTED_NIX_MODE=portable
@@ -248,7 +277,7 @@ fi
 
 case $SELECTED_NIX_MODE in
     daemon)
-        daemon_is_supported || die 'daemon Nix requires systemd, root or sudo, and SELinux not enforcing; use --nix single-user or portable'
+        daemon_is_supported || die 'daemon Nix requires administrator access (and on Linux, systemd with SELinux not enforcing)'
         ;;
     single-user)
         [ "$(id -u)" -ne 0 ] || die 'single-user Nix cannot be installed as root; use --nix daemon or portable'
@@ -266,7 +295,7 @@ NIX_INSTALL_URL=${C3PM_NIX_INSTALL_URL:-https://nixos.org/nix/install}
 say 'c3pm installation plan:'
 say "  release:       $VERSION"
 say "  destination:   $INSTALL_DIR/c3pm"
-say "  platform:      Linux x86_64"
+say "  platform:      $PLATFORM"
 say "  Nix backend:   $SELECTED_NIX_MODE"
 if [ "$bootstrap_needed" -eq 1 ]; then
     say "  prerequisites: install with $PACKAGE_MANAGER"
@@ -274,7 +303,7 @@ else
     say '  prerequisites: already available'
 fi
 if [ "$MODIFY_PATH" -eq 1 ]; then
-    say "  PATH profile:  $HOME/.profile"
+    say "  PATH profile:  $PROFILE_FILE"
 else
     say '  PATH profile:  unchanged'
 fi
@@ -323,7 +352,7 @@ install_prerequisites() {
             as_root yum install -y git curl ca-certificates xz tar
             ;;
         pacman)
-            as_root pacman -S --needed --noconfirm git curl ca-certificates xz tar
+            as_root pacman -Syu --needed --noconfirm git curl ca-certificates xz tar
             ;;
         zypper)
             as_root zypper --non-interactive install git curl ca-certificates xz tar
@@ -466,7 +495,7 @@ path_contains() {
 }
 
 if [ "$MODIFY_PATH" -eq 1 ] && ! path_contains "$INSTALL_DIR"; then
-    profile=$HOME/.profile
+    profile=$PROFILE_FILE
     marker="# >>> c3pm PATH: $INSTALL_DIR >>>"
     if [ ! -f "$profile" ] || ! grep -F "$marker" "$profile" >/dev/null 2>&1; then
         escaped_install_dir=$(printf '%s\n' "$INSTALL_DIR" | sed 's/[\\"$`]/\\&/g')
@@ -489,5 +518,11 @@ if ! path_contains "$INSTALL_DIR"; then
     say "Open a new shell or run: export PATH=\"$INSTALL_DIR:\$PATH\""
 fi
 case $SELECTED_NIX_MODE in
-    none) warn 'Nix setup was skipped; select a backend later with c3pm toolchain nix use system|portable' ;;
+    none)
+        if [ "$SYSTEM_NAME" = Darwin ]; then
+            warn 'Nix setup was skipped; install system Nix and select it with c3pm toolchain nix use system'
+        else
+            warn 'Nix setup was skipped; select a backend later with c3pm toolchain nix use system|portable'
+        fi
+        ;;
 esac

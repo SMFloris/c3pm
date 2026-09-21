@@ -40,8 +40,14 @@ case ${1:-} in
 esac
 EOF
 chmod +x "$TEST_ROOT/fixture/c3pm-linux-x86_64"
-fixture_checksum=$(sha256sum "$TEST_ROOT/fixture/c3pm-linux-x86_64" | awk '{ print $1 }')
-printf '%s  c3pm-linux-x86_64\n' "$fixture_checksum" >"$TEST_ROOT/fixture/SHA256SUMS"
+for platform in linux-aarch64 macos-aarch64 macos-x86_64; do
+    cp "$TEST_ROOT/fixture/c3pm-linux-x86_64" "$TEST_ROOT/fixture/c3pm-$platform"
+done
+: >"$TEST_ROOT/fixture/SHA256SUMS"
+for platform in linux-x86_64 linux-aarch64 macos-aarch64 macos-x86_64; do
+    fixture_checksum=$(sha256sum "$TEST_ROOT/fixture/c3pm-$platform" | awk '{ print $1 }')
+    printf '%s  c3pm-%s\n' "$fixture_checksum" "$platform" >>"$TEST_ROOT/fixture/SHA256SUMS"
+done
 cat >"$TEST_ROOT/fixture/c3pm-bad-startup" <<'EOF'
 #!/bin/sh
 exit 1
@@ -84,11 +90,11 @@ case $url in
             cp "$C3PM_TEST_FIXTURE/SHA256SUMS" "$output"
         fi
         ;;
-    */c3pm-linux-x86_64)
+    */c3pm-*)
         if [ "${C3PM_TEST_BAD_STARTUP:-0}" = 1 ]; then
             cp "$C3PM_TEST_FIXTURE/c3pm-bad-startup" "$output"
         else
-            cp "$C3PM_TEST_FIXTURE/c3pm-linux-x86_64" "$output"
+            cp "$C3PM_TEST_FIXTURE/${url##*/}" "$output"
         fi
         ;;
     *)
@@ -105,10 +111,51 @@ export PATH
 sh -n "$INSTALLER"
 sh "$INSTALLER" --help >/dev/null
 
-if C3PM_TEST_UNAME_M=aarch64 sh "$INSTALLER" --nix none --yes >"$TEST_ROOT/unsupported.log" 2>&1; then
+if C3PM_TEST_UNAME_M=mips64 sh "$INSTALLER" --nix none --yes >"$TEST_ROOT/unsupported.log" 2>&1; then
     fail 'unsupported architectures must be rejected'
 fi
-assert_file_contains "$TEST_ROOT/unsupported.log" "unsupported architecture 'aarch64'"
+assert_file_contains "$TEST_ROOT/unsupported.log" "unsupported platform 'Linux:mips64'"
+
+for entry in \
+    'Linux x86_64 linux-x86_64' \
+    'Linux amd64 linux-x86_64' \
+    'Linux aarch64 linux-aarch64' \
+    'Linux arm64 linux-aarch64' \
+    'Darwin arm64 macos-aarch64' \
+    'Darwin aarch64 macos-aarch64' \
+    'Darwin x86_64 macos-x86_64'
+do
+    # The table entries are fixed, space-separated test data.
+    # shellcheck disable=SC2086
+    set -- $entry
+    plan=$(C3PM_TEST_UNAME_S=$1 C3PM_TEST_UNAME_M=$2 \
+        sh "$INSTALLER" --nix none --yes --dry-run)
+    printf '%s\n' "$plan" | grep -F "platform:      $3" >/dev/null || \
+        fail "incorrect platform mapping for $1:$2"
+done
+if C3PM_TEST_UNAME_S=Darwin C3PM_TEST_UNAME_M=arm64 \
+    sh "$INSTALLER" --nix portable --yes --dry-run >"$TEST_ROOT/mac-portable.log" 2>&1; then
+    fail 'macOS must reject portable Nix'
+fi
+assert_file_contains "$TEST_ROOT/mac-portable.log" 'Linux-only'
+
+for entry in \
+    'Linux aarch64 linux-aarch64' \
+    'Darwin arm64 macos-aarch64' \
+    'Darwin x86_64 macos-x86_64'
+do
+    # The table entries are fixed, space-separated test data.
+    # shellcheck disable=SC2086
+    set -- $entry
+    platform_home=$TEST_ROOT/install-$3
+    mkdir -p "$platform_home"
+    HOME=$platform_home C3PM_TEST_UNAME_S=$1 C3PM_TEST_UNAME_M=$2 \
+        sh "$INSTALLER" --nix none --yes --prefix "$platform_home/bin" >/dev/null
+    [ -x "$platform_home/bin/c3pm" ] || fail "missing installed binary for $3"
+    if [ "$1" = Darwin ]; then
+        assert_file_contains "$platform_home/.zprofile" '# >>> c3pm PATH:'
+    fi
+done
 
 dry_home=$TEST_ROOT/dry-home
 dry_prefix=$TEST_ROOT/dry-prefix

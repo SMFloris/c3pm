@@ -194,6 +194,12 @@ fn LinkSpec[]? parse_links(Allocator allocator, Object* c3pm)
 fn ToolchainConfig? parse_toolchain(Allocator allocator, Object* c3pm)
 {
 	ToolchainConfig config = { .nixpkgs = "github:NixOS/nixpkgs/nixpkgs-unstable" };
+	// nixpkgs 26.11 dropped x86_64-darwin. Its last supported stable branch
+	// still needs a newer C3 than the version packaged there.
+	$if env::DARWIN && env::X86_64:
+	config.nixpkgs = "github:NixOS/nixpkgs/0c32f40fe3e2a9adfc427fd5abc061a31043ea44";
+	config.c3c_version = "0.8.4";
+	$endif
 	if (!c3pm.has_key("toolchain")) return config;
 	Object* declaration = c3pm.get("toolchain")!;
 	if (!declaration.is_map()) return INVALID_METADATA~;

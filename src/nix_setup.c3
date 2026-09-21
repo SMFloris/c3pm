@@ -172,6 +172,14 @@ fn void? download_nix_portable(String destination)
 
 fn void print_missing_nix_backend()
 {
+	$if env::DARWIN:
+	io::printn(
+		"No Nix backend is available.\n\n"
+		"Install system Nix and ensure `nix` is on PATH.\n\n"
+		"To inspect backend selection:\n\n"
+		"  c3pm toolchain nix status"
+	);
+	$else
 	io::printn(
 		"No Nix backend is available.\n\n"
 		"Install Nix and ensure `nix` is on PATH, or use the managed portable backend:\n\n"
@@ -179,6 +187,7 @@ fn void print_missing_nix_backend()
 		"To inspect backend selection:\n\n"
 		"  c3pm toolchain nix status"
 	);
+	$endif
 }
 
 fn String nix_backend_version(String backend, String executable)
@@ -207,6 +216,11 @@ fn int? run_nix_status_command()
 	}
 	if (try executable = env::tget_var("C3PM_NIX_PORTABLE") && executable.len)
 	{
+		if (!nix_portable_asset().len)
+		{
+			io::eprintfn("c3pm: managed nix-portable is supported on Linux x86_64 and aarch64 only; use system Nix on macOS.");
+			return 1;
+		}
 		print_nix_status("portable", executable, "C3PM_NIX_PORTABLE");
 		return 0;
 	}
@@ -225,6 +239,11 @@ fn int? run_nix_status_command()
 		if (user.has_nix)
 		{
 			NixBackendConfig config = user.nix;
+			if (config.mode == "portable" && !nix_portable_asset().len)
+			{
+				io::eprintfn("c3pm: managed nix-portable is supported on Linux x86_64 and aarch64 only; use system Nix on macOS.");
+				return 1;
+			}
 			if (!executable_file(config.executable))
 			{
 				io::printfn("Configured Nix executable is unavailable:\n  %s", config.executable);
@@ -254,7 +273,7 @@ fn int? use_system_nix()
 	}
 	io::printn(
 		"Nix was not found on PATH.\n\n"
-		"Install Nix and try again, or use:\n\n"
+		"Install system Nix and try again. On Linux, you can also use:\n\n"
 		"  c3pm toolchain nix use portable"
 	);
 	return 1;
@@ -262,6 +281,11 @@ fn int? use_system_nix()
 
 fn int? use_portable_nix()
 {
+	if (!nix_portable_asset().len)
+	{
+		io::eprintfn("c3pm: managed nix-portable is supported on Linux x86_64 and aarch64 only; use system Nix on macOS.");
+		return 1;
+	}
 	String executable = xdg_portable_path(tmem)!;
 	if (!executable_file(executable)) download_nix_portable(executable)!;
 	save_nix_backend_config({ .mode = "portable", .executable = executable })!;
@@ -326,6 +350,7 @@ fn PortableNixRunner? select_nix_runner(Allocator allocator)
 	}
 	if (try configured = env::tget_var("C3PM_NIX_PORTABLE"))
 	{
+		if (!nix_portable_asset().len) return UNSUPPORTED_HOST~;
 		return portable_nix_runner(configured.copy(allocator));
 	}
 
@@ -343,6 +368,10 @@ fn PortableNixRunner? select_nix_runner(Allocator allocator)
 		if (user.has_nix)
 		{
 			NixBackendConfig config = user.nix;
+			if (config.mode == "portable" && !nix_portable_asset().len)
+			{
+				return UNSUPPORTED_HOST~;
+			}
 			if (!executable_file(config.executable)) return INVALID_NIX_CONFIG~;
 			return config.mode == "portable"
 				? portable_nix_runner(config.executable.copy(allocator))

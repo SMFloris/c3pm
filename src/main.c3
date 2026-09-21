@@ -31,6 +31,11 @@ fn int? run_command(String[] args)
 	@pool()
 	{
 		args = normalize_command_aliases(tmem, args);
+		if (args[1] == "bundle" && !host_nix_system()!.ends_with("-linux"))
+		{
+			io::eprintfn("c3pm: bundle is currently supported on Linux only.");
+			return 1;
+		}
 		if (args[1] == "toolchain" && args.len >= 3 && args[2] == "nix")
 		{
 			return run_toolchain_nix_command(args);

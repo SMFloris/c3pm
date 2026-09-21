@@ -11,7 +11,15 @@ fn String? host_c3_target()
 	$if env::LINUX && env::AARCH64:
 	return "linux-aarch64";
 	$else
+	$if env::DARWIN && env::AARCH64:
+	return "macos-aarch64";
+	$else
+	$if env::DARWIN && env::X86_64:
+	return "macos-x64";
+	$else
 	return UNSUPPORTED_HOST~;
+	$endif
+	$endif
 	$endif
 	$endif
 }
@@ -24,7 +32,15 @@ fn String? host_nix_system()
 	$if env::LINUX && env::AARCH64:
 	return "aarch64-linux";
 	$else
+	$if env::DARWIN && env::AARCH64:
+	return "aarch64-darwin";
+	$else
+	$if env::DARWIN && env::X86_64:
+	return "x86_64-darwin";
+	$else
 	return UNSUPPORTED_HOST~;
+	$endif
+	$endif
 	$endif
 	$endif
 }

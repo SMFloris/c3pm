@@ -6,7 +6,6 @@ on:
       - "v*"
 
 permissions:
-  actions: write
   contents: write
 
 concurrency:
@@ -14,21 +13,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release-linux-x86_64:
-    name: Build Linux x86_64 release
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-
+  build-native:
+    name: Build ${{ matrix.platform }} release
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: linux-x86_64
+            linux: true
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+            linux: true
+          - os: macos-15
+            platform: macos-aarch64
+            linux: false
+          - os: macos-15-intel
+            platform: macos-x86_64
+            linux: false
     env:
       C3_VERSION: "0.8.4"
+      NIXPKGS_REF: github:NixOS/nixpkgs/a32edd7654519351e48e80372a928df336394670
 
     steps:
       - name: Check out source
         uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
 
-      - name: Install C3 compiler
+      - name: Install C3 compiler on Linux x86_64
+        if: matrix.platform == 'linux-x86_64'
         run: |
           curl --fail --location --retry 3 \
             "https://github.com/c3lang/c3c/releases/download/v${C3_VERSION}/c3-linux-static.tar.gz" \
@@ -36,68 +50,101 @@ jobs:
           tar -xzf "${RUNNER_TEMP}/c3-linux-static.tar.gz" -C "${RUNNER_TEMP}"
           echo "${RUNNER_TEMP}/c3" >> "${GITHUB_PATH}"
 
+      - name: Install system Nix
+        uses: cachix/install-nix-action@v31
+
+      - name: Install pinned C3 compiler
+        if: matrix.platform != 'linux-x86_64'
+        run: |
+          c3c_path="$(sh scripts/ci-install-c3c.sh '${{ matrix.platform }}')"
+          echo "${c3c_path}/bin" >> "${GITHUB_PATH}"
+
       - name: Install musl toolchain
+        if: matrix.linux
         run: |
           sudo apt-get update
           sudo apt-get install --yes musl-tools
 
-      - name: Build standalone c3pm
+      - name: Build and run native executable
         run: |
           release_version="${GITHUB_REF_NAME#v}"
-          case "${release_version}" in
-            ""|*[!0-9A-Za-z.+-]*)
-              echo "invalid release tag: ${GITHUB_REF_NAME}" >&2
-              exit 1
-              ;;
-          esac
-          case "${C3_VERSION}" in
-            ""|*[!0-9A-Za-z.+-]*)
-              echo "invalid C3 version: ${C3_VERSION}" >&2
-              exit 1
-              ;;
-          esac
-          readme_c3_version="$(sed -n \
-            's/^> \*\*Default C3 target:\*\* C3 \(.*\)\.$/\1/p' README.md)"
-          case "${readme_c3_version}" in
-            ""|*[!0-9A-Za-z.+-]*)
-              echo "invalid C3 version in README.md: ${readme_c3_version}" >&2
-              exit 1
-              ;;
-          esac
-          readme_c3_pattern="${readme_c3_version//./\\.}"
-          sed -i \
-            "s/^const String C3PM_VERSION = .*$/const String C3PM_VERSION = \"${release_version}\";/" \
-            src/version.c3
-          sed -i "s/${readme_c3_pattern}/${C3_VERSION}/g" README.md
-          grep -Fx "> **Default C3 target:** C3 ${C3_VERSION}." README.md
-          c3c --version
-          c3c --linux-libc=musl -z -static --cc musl-gcc -O2 build c3pm
+          test "${GITHUB_REF_NAME}" = "v${release_version}"
+          grep -Fx "const String C3PM_VERSION = \"${release_version}\";" src/version.c3
+          grep -F "\"version\": \"${release_version}\"" project.json
+          c3c --version | grep -F "${C3_VERSION}"
+          c3c test
+          if [ "${{ matrix.linux }}" = true ]; then
+            c3c --linux-libc=musl -z -static --cc musl-gcc -O2 build c3pm
+          else
+            c3c -O2 build c3pm
+          fi
           mkdir -p release
-          cp build/c3pm release/c3pm-linux-x86_64
-          chmod +x release/c3pm-linux-x86_64
-          test -f release/c3pm-linux-x86_64
-          test ! -L release/c3pm-linux-x86_64
-          test -x release/c3pm-linux-x86_64
-          test "$(release/c3pm-linux-x86_64 --version)" = "c3pm ${release_version}"
-          if readelf -l release/c3pm-linux-x86_64 | grep -q INTERP; then
-            echo "release executable is dynamically linked" >&2
+          cp build/c3pm "release/c3pm-${{ matrix.platform }}"
+          chmod +x "release/c3pm-${{ matrix.platform }}"
+          test -f "release/c3pm-${{ matrix.platform }}"
+          test ! -L "release/c3pm-${{ matrix.platform }}"
+          test -x "release/c3pm-${{ matrix.platform }}"
+          test "$("release/c3pm-${{ matrix.platform }}" --version)" = "c3pm ${release_version}"
+          if [ "${{ matrix.linux }}" = true ] &&
+            readelf -l "release/c3pm-${{ matrix.platform }}" | grep -q INTERP; then
+            echo "Linux release executable is dynamically linked" >&2
             exit 1
           fi
 
+      - name: Test native release executable in a C3 project
+        run: |
+          export XDG_CONFIG_HOME="${RUNNER_TEMP}/c3pm-release-config"
+          export XDG_DATA_HOME="${RUNNER_TEMP}/c3pm-release-data"
+          release_c3pm="${GITHUB_WORKSPACE}/release/c3pm-${{ matrix.platform }}"
+          "${release_c3pm}" toolchain nix use system
+          cd examples/sqlite-example
+          "${release_c3pm}" install
+          "${release_c3pm}" shell -- c3c build
+          "${release_c3pm}" shell -- ./build/sqlite_example add "native release smoke"
+          "${release_c3pm}" shell -- ./build/sqlite_example list | grep -F "native release smoke"
+
+      - name: Upload native executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: c3pm-${{ matrix.platform }}
+          path: release/c3pm-${{ matrix.platform }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: build-native
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Download native executables
+        uses: actions/download-artifact@v4
+        with:
+          pattern: c3pm-*
+          path: release
+          merge-multiple: true
+
       - name: Create source archive and checksums
         run: |
-          git add README.md src/version.c3
-          release_tree="$(git write-tree)"
+          for platform in linux-x86_64 linux-aarch64 macos-aarch64 macos-x86_64; do
+            test -f "release/c3pm-${platform}"
+            chmod +x "release/c3pm-${platform}"
+          done
           git archive \
             --format=zip \
             --prefix="c3pm-${GITHUB_REF_NAME}/" \
             --output="release/c3pm-${GITHUB_REF_NAME}-source.zip" \
-            "${release_tree}"
+            HEAD
           cp install.sh release/install.sh
           chmod +x release/install.sh
           cd release
           sha256sum \
             c3pm-linux-x86_64 \
+            c3pm-linux-aarch64 \
+            c3pm-macos-aarch64 \
+            c3pm-macos-x86_64 \
             install.sh \
             "c3pm-${GITHUB_REF_NAME}-source.zip" \
             > SHA256SUMS
@@ -108,6 +155,9 @@ jobs:
         run: |
           gh release create "${GITHUB_REF_NAME}" \
             release/c3pm-linux-x86_64 \
+            release/c3pm-linux-aarch64 \
+            release/c3pm-macos-aarch64 \
+            release/c3pm-macos-x86_64 \
             release/install.sh \
             "release/c3pm-${GITHUB_REF_NAME}-source.zip" \
             release/SHA256SUMS \

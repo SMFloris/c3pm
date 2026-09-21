@@ -13,7 +13,7 @@ c3pm shell -- ./build/sqlite_example add "write an end-to-end test"
 c3pm shell -- ./build/sqlite_example list
 ```
 
-Build and run the portable executable without entering the development shell:
+On Linux, build and run the portable executable without entering the development shell:
 
 ```sh
 c3pm bundle

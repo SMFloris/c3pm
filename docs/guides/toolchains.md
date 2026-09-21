@@ -35,6 +35,8 @@ c3pm toolchain nixpkgs reset
 
 `update` refreshes the locked nixpkgs input without changing its configured reference. The [c3pm metadata reference]({{ '/docs/reference/metadata/#toolchain-metadata' | relative_url }}) describes the stored C3 and nixpkgs settings.
 
+macOS Intel defaults to a pinned nixpkgs 26.05 revision because newer nixpkgs no longer supports `x86_64-darwin`; c3pm pins C3 0.8.4 there. Other platforms default to nixpkgs-unstable.
+
 Inspect the project toolchain with:
 
 ```sh
@@ -53,7 +55,7 @@ c3pm toolchain nix use /opt/nix/bin/nix
 c3pm toolchain nix reset
 ```
 
-The `portable` backend lets c3pm download and manage `nix-portable`. Backend selection is user configuration rather than project metadata, so backend commands also work outside a C3 project.
+The `portable` backend lets c3pm download and manage `nix-portable` on Linux x86_64 and ARM64. macOS requires system Nix. Backend selection is user configuration rather than project metadata, so backend commands also work outside a C3 project.
 
 For one-off overrides:
 

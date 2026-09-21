@@ -267,7 +267,7 @@ fn String generate_flake_nix(Allocator allocator, Graph* graph, Metadata* projec
 		"  };\n\n"
 		"  outputs = inputs@{ self, nixpkgs, ... }:\n"
 		"    let\n"
-		"      systems = [ \"x86_64-linux\" \"aarch64-linux\" ];\n"
+		"      systems = [ \"x86_64-linux\" \"aarch64-linux\" \"aarch64-darwin\" \"x86_64-darwin\" ];\n"
 		"      forAllSystems = nixpkgs.lib.genAttrs systems;\n"
 		"      evaluated = forAllSystems (system:\n"
 		"        let pkgs = import nixpkgs { inherit system; };\n"

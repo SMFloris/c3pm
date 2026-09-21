@@ -20,7 +20,7 @@ c3pm shell -- c3c build
 c3pm shell -- ./build/sqlite_example add "ship c3pm"
 c3pm shell -- ./build/sqlite_example list
 
-# Produce one portable executable.
+# On Linux only, produce one portable executable.
 c3pm bundle
 ./dist/sqlite_example list
 ```

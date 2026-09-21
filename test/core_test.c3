@@ -12,6 +12,26 @@ struct FakeNixRunner (NixRunner)
 	bool fail_build;
 }
 
+fn void native_host_targets_are_mapped_test() @test
+{
+	$if env::LINUX && env::X86_64:
+	test::eq("linux-x64", host_c3_target()!!);
+	test::eq("x86_64-linux", host_nix_system()!!);
+	$endif
+	$if env::LINUX && env::AARCH64:
+	test::eq("linux-aarch64", host_c3_target()!!);
+	test::eq("aarch64-linux", host_nix_system()!!);
+	$endif
+	$if env::DARWIN && env::AARCH64:
+	test::eq("macos-aarch64", host_c3_target()!!);
+	test::eq("aarch64-darwin", host_nix_system()!!);
+	$endif
+	$if env::DARWIN && env::X86_64:
+	test::eq("macos-x64", host_c3_target()!!);
+	test::eq("x86_64-darwin", host_nix_system()!!);
+	$endif
+}
+
 fn void dependency_command_aliases_are_normalized_test() @test
 {
 	String[] normalized = normalize_command_aliases(tmem,
@@ -891,6 +911,7 @@ fn void toolchain_and_link_metadata_generation_test() @test
 	String shell = generate_shell_nix(tmem, &graph, &project);
 	String project_nix = generate_project_nix(tmem, &project);
 	test::@check(flake.contains(`nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11"`));
+	test::@check(flake.contains(`"x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin"`));
 	test::@check(flake.contains(`c3c-source = {`));
 	test::@check(flake.contains(`url = "github:c3lang/c3c/v0.8.3"`));
 	test::@check(flake.contains(`c3c-binary = {`));

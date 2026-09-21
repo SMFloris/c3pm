@@ -9,6 +9,8 @@
   "dependencies": [
     "sqlite3"
   ],
+  // Also link explicitly on Linux ARM64; the pinned binding predates that target.
+  "linked-libraries": [ "sqlite3" ],
   // Authors, optionally with email.
   "authors": [ "John Doe <john.doe@example.com>" ],
   // Version using semantic versioning.

@@ -28,6 +28,6 @@ The default output is:
 dist/<target>
 ```
 
-`bundle` supports executable targets only. Its output is a regular Linux executable rather than a symlink into the Nix store.
+`bundle` is currently Linux-only and supports executable targets only. On macOS, c3pm reports that bundling is unsupported. Its output is a regular Linux executable rather than a symlink into the Nix store.
 
 [How portable bundles work]({{ '/docs/internals/bundles/' | relative_url }}) explains how Nix finds the package's referenced runtime closure and embeds it in the output file.
