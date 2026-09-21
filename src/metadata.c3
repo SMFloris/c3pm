@@ -117,6 +117,36 @@ fn DependencySpec[]? parse_sources(Allocator allocator, Object* c3pm)
 	return specs.to_array(allocator);
 }
 
+fn RegistryDependencySpec[]? parse_registry_dependencies(Allocator allocator, Object* c3pm)
+{
+	List{RegistryDependencySpec} specs;
+	specs.init(allocator);
+	if (!c3pm.has_key("registry")) return specs.to_array(allocator);
+	Object* declarations = c3pm.get("registry")!;
+	if (!declarations.is_map()) return INVALID_METADATA~;
+	declarations.@each_entry(; String name, Object* declaration)
+	{
+		if (!valid_library_name(name) || !declaration.is_map() ||
+			!declaration.has_key("registry") || !declaration.has_key("package") ||
+			!declaration.has_key("version") ||
+			!declaration.get("registry")!.is_string() ||
+			!declaration.get("package")!.is_string() ||
+			!declaration.get("version")!.is_string()) return INVALID_METADATA~;
+		String registry = declaration.get_string("registry")!;
+		String package_id = declaration.get_string("package")!;
+		String version = declaration.get_string("version")!;
+		if (!valid_library_name(registry) || !is_registry_package_id(package_id) ||
+			!valid_registry_version(version)) return INVALID_METADATA~;
+		specs.push({
+			.name = name.copy(allocator),
+			.registry = registry.copy(allocator),
+			.package_id = package_id.copy(allocator),
+			.version = version.copy(allocator),
+		});
+	};
+	return specs.to_array(allocator);
+}
+
 fn LinkSpec[]? parse_links(Allocator allocator, Object* c3pm)
 {
 	List{LinkSpec} links;
@@ -186,7 +216,12 @@ fn String[]? parse_nix_imports(Allocator allocator, Object* nix)
 	imports.init(allocator);
 	if (!nix.has_key("imports")) return imports.to_array(allocator);
 	Object* value = nix.get("imports")!;
-	if (value.is_array())
+	if (value.is_string())
+	{
+		validate_nix_import_path(value.s)!;
+		imports.push(value.s.copy(allocator));
+	}
+	else if (value.is_array())
 	{
 		for (sz i = 0; i < value.len(); i++)
 		{
@@ -235,6 +270,7 @@ fn Metadata? parse_metadata(Allocator allocator, String text, String target, boo
 	if (try c3pm = c3pm_vendor(root))
 	{
 		result.sources = parse_sources(allocator, c3pm)!;
+		result.registry_dependencies = parse_registry_dependencies(allocator, c3pm)!;
 		result.nix = parse_nix_inputs(allocator, c3pm)!;
 		result.links = parse_links(allocator, c3pm)!;
 		result.toolchain = parse_toolchain(allocator, c3pm)!;

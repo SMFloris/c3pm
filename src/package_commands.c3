@@ -64,7 +64,8 @@ fn void? validate_linked_project_target(Allocator allocator, Path project_root,
 }
 
 fn String? add_dependency(Allocator allocator, Path project_root, PackageSource source,
-	String requested_name, String for_target, NixRunner runner)
+	String requested_name, String for_target, NixRunner runner,
+	RegisteredPackageSource registered = {})
 {
 	String project_path = string::format(tmem, "%s/project.json", (String)project_root);
 	String original = ((String)file::load(allocator, project_path)!).copy(allocator);
@@ -95,6 +96,7 @@ fn String? add_dependency(Allocator allocator, Path project_root, PackageSource 
 			"  \"dependency-search-paths\": [ \"lib\" ]")!;
 	}
 	if (!declared) edited = add_source_declaration(allocator, edited, name, source)!;
+	if (registered.id.len) edited = set_registry_dependency(allocator, edited, "", registered)!;
 	file::save(project_path, edited)!;
 	String? installed = install_project(allocator, project_root, runner);
 	if (catch err = installed)
@@ -103,6 +105,105 @@ fn String? add_dependency(Allocator allocator, Path project_root, PackageSource 
 		return err~;
 	}
 	return name;
+}
+
+fn String? find_installed_registry_dependency(Metadata* project,
+	RegisteredPackageSource[] releases)
+{
+	String found;
+	foreach (release : releases)
+	{
+		foreach (dependency : project.sources)
+		{
+			if (dependency.name != release.provides ||
+				!source_equal(dependency.source, release.source)) continue;
+			bool direct;
+			foreach (name : project.dependencies)
+			{
+				if (name == dependency.name) { direct = true; break; }
+			}
+			if (!direct) continue;
+			if (found.len && found != dependency.name) return AMBIGUOUS_DEPENDENCY_UPDATE~;
+			found = dependency.name;
+		}
+	}
+	if (!found.len) return NOT_FOUND~;
+	return found;
+}
+
+fn RegistryDependencySpec? find_registered_dependency(Metadata* project, String query)
+{
+	RegistryDependencySpec found;
+	bool qualified = is_registry_package_id(query);
+	foreach (entry : project.registry_dependencies)
+	{
+		String[] parts = entry.package_id.tsplit("/");
+		if (qualified ? entry.package_id != query : parts[1] != query) continue;
+		if (found.name.len) return AMBIGUOUS_DEPENDENCY_UPDATE~;
+		bool direct;
+		foreach (name : project.dependencies)
+		{
+			if (name == entry.name) { direct = true; break; }
+		}
+		if (!direct) return INVALID_METADATA~;
+		if (catch project.find_source(entry.name)) return INVALID_METADATA~;
+		found = entry;
+	}
+	if (!found.name.len) return NOT_FOUND~;
+	return found;
+}
+
+fn String? update_dependency(Allocator allocator, Path project_root, String previous,
+	RegisteredPackageSource selected, NixRunner runner)
+{
+	String project_path = string::format(tmem, "%s/project.json", (String)project_root);
+	String original = ((String)file::load(allocator, project_path)!).copy(allocator);
+	Metadata project = parse_project(tmem, original, host_c3_target()!)!;
+	DependencySpec* existing = project.find_source(previous)!;
+	foreach (dependency : project.sources)
+	{
+		if (previous != selected.provides && dependency.name == selected.provides)
+		{
+			return SOURCE_CONFLICT~;
+		}
+	}
+	bool same_source = previous == selected.provides &&
+		source_equal(existing.source, selected.source);
+	if (same_source)
+	{
+		foreach (reference : project.registry_dependencies)
+		{
+			if (reference.name == previous && reference.registry == selected.registry &&
+				reference.package_id == selected.id && reference.version == selected.version)
+			{
+				return previous;
+			}
+		}
+	}
+	String edited = original.copy(allocator);
+	if (!same_source)
+	{
+		String manifest_json = fetch_added_manifest(allocator, project_root, selected.source, runner)!;
+		Metadata manifest = parse_manifest(allocator, manifest_json, host_c3_target()!)!;
+		if (manifest.provides != selected.provides) return PROVIDES_MISMATCH~;
+		edited = replace_array_string_at(allocator, edited, "dependencies",
+			previous, selected.provides, "")!;
+		foreach (target : project.targets)
+		{
+			edited = replace_array_string_at(allocator, edited, "dependencies",
+				previous, selected.provides, target.name)!;
+		}
+		edited = replace_source_declaration(allocator, edited, previous,
+			selected.provides, selected.source)!;
+	}
+	edited = set_registry_dependency(allocator, edited, previous, selected)!;
+	file::save(project_path, edited)!;
+	if (catch err = install_project(allocator, project_root, runner))
+	{
+		file::save(project_path, original)!;
+		return err~;
+	}
+	return selected.provides;
 }
 
 fn void? remove_dependency(Allocator allocator, Path project_root, String name,
@@ -121,7 +222,11 @@ fn void? remove_dependency(Allocator allocator, Path project_root, String name,
 	bool still_used;
 	foreach (dependency : remaining.dependencies)
 		if (dependency == name) { still_used = true; break; }
-	if (!still_used) edited = remove_source_declaration(allocator, edited, name)!;
+	if (!still_used)
+	{
+		edited = remove_source_declaration(allocator, edited, name)!;
+		edited = remove_registry_dependency(allocator, edited, name)!;
+	}
 	file::save(project_path, edited)!;
 	if (catch err = install_project(allocator, project_root, runner))
 	{

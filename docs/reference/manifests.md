@@ -57,6 +57,8 @@ This complete `project.json` example declares SQLite as both a C3 dependency and
 
 A library manifest describes one `.c3l` package. Its required `provides` value is the package name used in dependency lists. The library's own C3 dependencies and native inputs become part of the graph whenever a project can reach that library. See the [c3pm metadata reference]({{ '/docs/reference/metadata/' | relative_url }}) for the shared `vendor.c3pm` fields.
 
+To prepare and version a reusable binding, see [Package C3 libraries]({{ '/docs/guides/packaging/' | relative_url }}).
+
 This `.c3l/manifest.json` example provides the `sqlite3` C3 library, asks c3c to link `sqlite3`, and makes the nixpkgs `sqlite` package available:
 
 ```json

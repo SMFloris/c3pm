@@ -10,6 +10,7 @@ All c3pm-specific metadata lives under `vendor.c3pm`. The same field has the sam
 | --- | --- | --- |
 | `c3.dependencies` | Maps C3 dependency names to their source locations | Projects and library manifests |
 | `nix` | Declares native tools, libraries, propagated inputs, and local package definitions | Projects and library manifests |
+| `registry` | Records the registry, package ID, and selected version of a registry dependency | Projects |
 | `toolchain` | Pins the C3 compiler and nixpkgs reference | Projects |
 | `links` | Connects project targets to native packages or other C3 project targets | Projects |
 
@@ -26,6 +27,28 @@ Each entry under `vendor.c3pm.c3.dependencies` is a flat source object:
 | `path` | `path` | none |
 
 `subdir` is optional for every source type. These are the only supported source-object forms.
+
+## Registry references
+
+When `c3pm dep add` installs a registry package, the project's `project.json` records the selected release under `vendor.c3pm.registry`. The entry key is the library manifest's `provides` name:
+
+```json
+{
+  "vendor": {
+    "c3pm": {
+      "registry": {
+        "raylib55": {
+          "registry": "default",
+          "package": "vendor/raylib",
+          "version": "5.5"
+        }
+      }
+    }
+  }
+}
+```
+
+`registry` is the configured registry name, `package` is its `namespace/name` ID, and `version` is the exact published label. c3pm also keeps the resolved source under `vendor.c3pm.c3.dependencies`, so existing builds remain pinned until `c3pm dep update` changes them. Removing the dependency removes this reference when no target still uses it. The library's own `.c3l/manifest.json` continues to describe what that library provides.
 
 ## Toolchain metadata
 
@@ -164,7 +187,7 @@ Declare both fields when the library needs both.
 
 ### Native packages outside nixpkgs
 
-Projects and library manifests can load trusted package definitions with `vendor.c3pm.nix.imports`:
+Projects and library manifests can load trusted package definitions with `vendor.c3pm.nix.imports`. Use an array of paths, or a single path string when there is only one definition:
 
 ```json
 {

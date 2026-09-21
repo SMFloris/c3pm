@@ -10,7 +10,9 @@ c3pm reads C3 metadata and generates Nix inputs and build expressions. Nix perfo
 
 Starting with the project's dependencies, c3pm reads each source's `.c3l/manifest.json`, checks its `provides` name, and discovers its dependencies. Discovery continues until every reachable library has been read. A dependency name cannot resolve to conflicting sources.
 
-For a registry package, c3pm first resolves the indexed `latest` version to a concrete source declaration. The library manifest then supplies the dependency graph and native requirements.
+For a registry package, c3pm resolves the indexed `latest` version or an explicitly requested `@VERSION` to a concrete source declaration. The library manifest then supplies the dependency graph and native requirements.
+
+The project records both the pinned source and its registry reference under `vendor.c3pm.registry`. `c3pm dep update` uses that reference to find the installed package and select a new release. Older projects without the reference are matched against published source declarations.
 
 ## Generate and validate the environment
 

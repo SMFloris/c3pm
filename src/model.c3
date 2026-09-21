@@ -15,6 +15,8 @@ faultdef INVALID_ARGUMENTS,
 	INVALID_NIX_CONFIG,
 	INVALID_REGISTRY,
 	AMBIGUOUS_REGISTRY_PACKAGE,
+	REGISTRY_VERSION_NOT_FOUND,
+	AMBIGUOUS_DEPENDENCY_UPDATE,
 	NIX_DOWNLOAD_FAILED,
 	NIX_FAILED,
 	TRANSACTION_FAILED,
@@ -59,6 +61,14 @@ struct DependencySpec
 	PackageSource source;
 }
 
+struct RegistryDependencySpec
+{
+	String name;
+	String registry;
+	String package_id;
+	String version;
+}
+
 struct LinkSpec
 {
 	String name;
@@ -91,6 +101,7 @@ struct Metadata
 	String version;
 	String[] dependencies;
 	DependencySpec[] sources;
+	RegistryDependencySpec[] registry_dependencies;
 	NixInputs nix;
 	ProjectTarget[] targets;
 	LinkSpec[] links;

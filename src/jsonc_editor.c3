@@ -299,6 +299,21 @@ fn String? remove_array_string_at(Allocator allocator, String text, String key,
 	return replace_json_range(allocator, text, item.start, item.end, "");
 }
 
+fn String? replace_array_string_at(Allocator allocator, String text, String key,
+	String previous, String replacement, String target)
+{
+	if (previous == replacement) return text.copy(allocator);
+	sz object_start = target.len ? project_target_object(text, target)! : 0;
+	JsonMember member = find_json_member(text, object_start, key)!;
+	if (!member.found) return text.copy(allocator);
+	if (text[member.value_start] != '[') return INVALID_METADATA~;
+	JsonSpan item = find_array_string(text, member.value_start, previous)!;
+	if (!item.found) return text.copy(allocator);
+	if (json_array_has_string(text, member.value_start, replacement)) return SOURCE_CONFLICT~;
+	String quoted = string::format(tmem, "\"%s\"", replacement);
+	return replace_json_range(allocator, text, item.start, item.end, quoted);
+}
+
 fn String? insert_c3pm_property(Allocator allocator, String text, String property)
 {
 	JsonMember vendor = find_json_member(text, 0, "vendor")!;
@@ -413,6 +428,67 @@ fn String? remove_source_declaration(Allocator allocator, String text, String na
 	if (!member.found) return NOT_FOUND~;
 	JsonSpan span = { .start = member.start, .end = member.value_end, .found = true };
 	span = expand_removal(text, span, dependencies.value_start);
+	return replace_json_range(allocator, text, span.start, span.end, "");
+}
+
+fn String? replace_source_declaration(Allocator allocator, String text,
+	String previous, String replacement, PackageSource source)
+{
+	JsonMember dependencies = find_member_path(text, { "vendor", "c3pm", "c3", "dependencies" })!;
+	if (!dependencies.found || text[dependencies.value_start] != '{') return NOT_FOUND~;
+	JsonMember existing = find_json_member(text, dependencies.value_start, previous)!;
+	if (!existing.found) return NOT_FOUND~;
+	if (previous != replacement &&
+		find_json_member(text, dependencies.value_start, replacement)!.found) return SOURCE_CONFLICT~;
+	DString declaration = dstring::new_with_capacity(tmem, 256);
+	declaration.appendf("\"%s\": {\n", replacement);
+	append_source_metadata(&declaration, source, "          ");
+	declaration.append("\n        }");
+	return replace_json_range(allocator, text, existing.start, existing.value_end,
+		declaration.str_view());
+}
+
+fn String? set_registry_dependency(Allocator allocator, String text,
+	String previous, RegisteredPackageSource selected)
+{
+	JsonMember registry = find_member_path(text, { "vendor", "c3pm", "registry" })!;
+	DString declaration = dstring::new_with_capacity(tmem, 160);
+	declaration.appendf("      \"%s\": { \"registry\": \"%s\", \"package\": \"%s\", \"version\": \"%s\" }",
+		selected.provides, selected.registry, selected.id, selected.version);
+	if (registry.found)
+	{
+		if (text[registry.value_start] != '{') return INVALID_METADATA~;
+		String key = previous.len ? previous : selected.provides;
+		JsonMember existing = find_json_member(text, registry.value_start, key)!;
+		if (key != selected.provides &&
+			find_json_member(text, registry.value_start, selected.provides)!.found)
+		{
+			return SOURCE_CONFLICT~;
+		}
+		if (existing.found)
+		{
+			return replace_json_range(allocator, text, existing.start, existing.value_end,
+				declaration.str_view().trim());
+		}
+		return insert_json_container_value(allocator, text, registry.value_start, '}',
+			declaration.str_view());
+	}
+	DString property = dstring::new_with_capacity(tmem, declaration.len() + 48);
+	property.append("      \"registry\": {\n");
+	property.append(declaration.str_view());
+	property.append("\n      }");
+	return insert_c3pm_property(allocator, text, property.str_view());
+}
+
+fn String? remove_registry_dependency(Allocator allocator, String text, String name)
+{
+	JsonMember registry = find_member_path(text, { "vendor", "c3pm", "registry" })!;
+	if (!registry.found) return text.copy(allocator);
+	if (text[registry.value_start] != '{') return INVALID_METADATA~;
+	JsonMember existing = find_json_member(text, registry.value_start, name)!;
+	if (!existing.found) return text.copy(allocator);
+	JsonSpan span = { .start = existing.start, .end = existing.value_end, .found = true };
+	span = expand_removal(text, span, registry.value_start);
 	return replace_json_range(allocator, text, span.start, span.end, "");
 }
 

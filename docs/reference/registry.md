@@ -53,7 +53,7 @@ The registry's `registry.json` identifies the format and records when the index 
 
 ## Package metadata: package.json
 
-`packages/vendor/raylib/package.json` describes the package and lists every available version. The `id` must be `namespace/name`. `description`, `homepage`, and `repository` are required strings (they may be empty); `tags` is an array of strings; `versions` must be a nonempty array of unique strings. Version labels can follow the upstream package's numbering, such as `5`, `5.5`, and `6`; they do not have to be three-part SemVer strings.
+`packages/vendor/raylib/package.json` describes the package and lists every available version. The `id` must be `namespace/name`. `description`, `homepage`, and `repository` are required strings (they may be empty); `tags` is an array of strings; `versions` must be a nonempty array of unique strings. Version labels can follow the upstream package's numbering, such as `5`, `5.5`, and `6`; they do not have to be three-part SemVer strings. Users can select an exact label with `c3pm dep add vendor/raylib@5.5`.
 
 ```json
 {

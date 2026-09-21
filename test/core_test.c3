@@ -9,6 +9,7 @@ struct FakeNixRunner (NixRunner)
 	String[] paths;
 	String[] manifests;
 	int locks;
+	bool fail_build;
 }
 
 fn void dependency_command_aliases_are_normalized_test() @test
@@ -187,6 +188,25 @@ fn void registry_package_reference_resolves_download_source_test() @test
 		INVALID_REGISTRY);
 }
 
+fn void registry_package_version_spec_selects_published_release_test() @test
+{
+	RegistryPackageSpec unqualified = parse_registry_package_spec("raylib@5.5")!!;
+	test::eq("raylib", unqualified.query);
+	test::eq("5.5", unqualified.version);
+	RegistryPackageSpec qualified = parse_registry_package_spec("vendor/raylib@6")!!;
+	test::eq("vendor/raylib", qualified.query);
+	test::eq("6", qualified.version);
+	test::eq("", parse_registry_package_spec("raylib")!!.version);
+	test::eq("", parse_registry_package_spec("git+ssh://git@example.com/repo")!!.query);
+	test::@error(parse_registry_package_spec("raylib@"), INVALID_ARGUMENTS);
+	test::@error(parse_registry_package_spec("raylib@@5.5"), INVALID_ARGUMENTS);
+	test::@error(parse_registry_package_spec("vendor/raylib@../5.5"), INVALID_ARGUMENTS);
+	String[] versions = { "6", "5.5", "5" };
+	test::eq("6", select_registry_version("6", versions, "")!!);
+	test::eq("5.5", select_registry_version("6", versions, "5.5")!!);
+	test::@error(select_registry_version("6", versions, "5.4"), REGISTRY_VERSION_NOT_FOUND);
+}
+
 fn void executable_lookup_accepts_path_and_name_test() @test
 {
 	String shell = find_executable(tmem, "/bin/sh")!!;
@@ -211,7 +231,10 @@ fn String? FakeNixRunner.eval_json(&self, Allocator allocator, String flake_dir,
 	String expression) @dynamic => `"/nix/store/c3pm-test-shell.drv"`.copy(allocator);
 
 fn String? FakeNixRunner.build(&self, Allocator allocator, String flake_ref) @dynamic
-	=> "/nix/store/c3pm-test-libs".copy(allocator);
+{
+	if (self.fail_build) return NIX_FAILED~;
+	return "/nix/store/c3pm-test-libs".copy(allocator);
+}
 
 fn void? FakeNixRunner.bundle(&self, String installable,
 	String output_link, String executable_name) @dynamic
@@ -507,6 +530,98 @@ fn void add_and_remove_are_transactional_and_preserve_jsonc_test() @test
 	test::eq(0, without_dependency.dependencies.len);
 }
 
+fn void registry_dependency_update_replaces_names_sources_and_rolls_back_test() @test
+{
+	String scratch = "/tmp/c3pm-v2-registry-update-test";
+	Path root = scratch.to_tpath()!!;
+	if (path::exists(root)) (void)path::rmtree(root);
+	defer if (path::exists(root)) (void)path::rmtree(root);
+	path::mkdir(root, true)!!;
+	String project_path = string::format(tmem, "%s/project.json", scratch);
+	file::save(project_path,
+	`{
+  // Keep this comment when the binding name changes.
+  "dependencies": [],
+  "targets": { "server": { "type": "executable", "dependencies": [] } },
+  "unrelated": true
+}`)!!;
+	FakeNixRunner fake = {
+		.paths = { "libraries/raylib55.c3l", "libraries/raylib6.c3l" },
+		.manifests = { `{"provides":"raylib55"}`, `{"provides":"raylib6"}` },
+	};
+	NixRunner runner = (NixRunner)&fake;
+	PackageSource old_source = parse_source(tmem, "github:someone/c3-libs", "main",
+		"libraries/raylib55.c3l", "")!!;
+	PackageSource new_source = parse_source(tmem, "github:someone/c3-libs", "main",
+		"libraries/raylib6.c3l", "")!!;
+	(void)add_dependency(tmem, root, old_source, "raylib55", "", runner)!!;
+	(void)add_dependency(tmem, root, old_source, "raylib55", "server", runner)!!;
+	String before = (String)file::load(tmem, project_path)!!;
+	Metadata project = parse_project(tmem, before, "linux-x64")!!;
+	RegisteredPackageSource[] releases = {
+		{ .registry = "default", .id = "vendor/raylib", .version = "5.5", .provides = "raylib55", .source = old_source },
+		{ .registry = "default", .id = "vendor/raylib", .version = "6", .provides = "raylib6", .source = new_source },
+	};
+	test::eq("raylib55", find_installed_registry_dependency(&project, releases)!!);
+	test::@error(find_installed_registry_dependency(&project, releases[1..]), NOT_FOUND);
+	test::eq("raylib55", update_dependency(tmem, root, "raylib55", releases[0], runner)!!);
+	Metadata marked = parse_project(tmem, (String)file::load(tmem, project_path)!!,
+		"linux-x64")!!;
+	test::eq("5.5", find_registered_dependency(&marked, "raylib")!!.version);
+	test::eq("raylib6", update_dependency(tmem, root, "raylib55", releases[1], runner)!!);
+	String updated = (String)file::load(tmem, project_path)!!;
+	test::@check(updated.contains("// Keep this comment when the binding name changes."));
+	test::@check(updated.contains("\"unrelated\": true"));
+	test::@check(!updated.contains("raylib55"));
+	test::@check(updated.contains("libraries/raylib6.c3l"));
+	Metadata changed = parse_project(tmem, updated, "linux-x64")!!;
+	test::eq("raylib6", changed.dependencies[0]);
+	test::eq("raylib6", changed.find_source("raylib6")!!.name);
+	test::eq(1, changed.registry_dependencies.len);
+	test::eq("raylib6", find_registered_dependency(&changed, "raylib")!!.name);
+	test::eq("6", find_registered_dependency(&changed, "vendor/raylib")!!.version);
+	test::@check(json_array_has_string(updated,
+		find_json_member(updated, project_target_object(updated, "server")!!,
+			"dependencies")!!.value_start, "raylib6"));
+
+	fake.fail_build = true;
+	test::@error(update_dependency(tmem, root, "raylib6", releases[0], runner), NIX_FAILED);
+	test::eq(updated, (String)file::load(tmem, project_path)!!);
+}
+
+fn void registry_add_records_reference_and_remove_clears_it_test() @test
+{
+	String scratch = "/tmp/c3pm-v2-registry-reference-test";
+	Path root = scratch.to_tpath()!!;
+	if (path::exists(root)) (void)path::rmtree(root);
+	defer if (path::exists(root)) (void)path::rmtree(root);
+	path::mkdir(root, true)!!;
+	String project_path = string::format(tmem, "%s/project.json", scratch);
+	file::save(project_path, `{"dependencies":[]}`)!!;
+	FakeNixRunner fake = {
+		.paths = { "libraries/raylib55.c3l" },
+		.manifests = { `{"provides":"raylib55"}` },
+	};
+	PackageSource source = parse_source(tmem, "github:someone/c3-libs", "main",
+		"libraries/raylib55.c3l", "")!!;
+	RegisteredPackageSource release = {
+		.registry = "default", .id = "vendor/raylib", .version = "5.5",
+		.provides = "raylib55", .source = source,
+	};
+	NixRunner runner = (NixRunner)&fake;
+	(void)add_dependency(tmem, root, source, "raylib55", "", runner, release)!!;
+	Metadata added = parse_project(tmem, (String)file::load(tmem, project_path)!!,
+		"linux-x64")!!;
+	test::eq(1, added.registry_dependencies.len);
+	test::eq("default", added.registry_dependencies[0].registry);
+	test::eq("vendor/raylib", added.registry_dependencies[0].package_id);
+	test::eq("5.5", added.registry_dependencies[0].version);
+	remove_dependency(tmem, root, "raylib55", "", runner)!!;
+	Metadata removed = parse_project(tmem, (String)file::load(tmem, project_path)!!,
+		"linux-x64")!!;
+	test::eq(0, removed.registry_dependencies.len);
+}
+
 fn void nix_imports_are_parsed_validated_and_generated_test() @test
 {
 	Metadata manifest = parse_manifest(tmem,
@@ -520,6 +635,11 @@ fn void nix_imports_are_parsed_validated_and_generated_test() @test
 		"linux-x64")!!;
 	test::eq(1, manifest.nix.imports.len);
 	test::eq("./package.nix", manifest.nix.imports[0]);
+	Metadata legacy = parse_manifest(tmem,
+		`{"provides":"raylib55","vendor":{"c3pm":{"nix":{"imports":"./raylib.nix"}}}}`,
+		"linux-x64")!!;
+	test::eq(1, legacy.nix.imports.len);
+	test::eq("./raylib.nix", legacy.nix.imports[0]);
 	GraphNode node = {
 		.name = "custom",
 		.source = { .kind = GITHUB, .location = "owner/repo", .rev = "main", .subdir = "libs/custom.c3l" },
@@ -532,6 +652,9 @@ fn void nix_imports_are_parsed_validated_and_generated_test() @test
 
 	test::@error(parse_manifest(tmem,
 		`{"provides":"bad","vendor":{"c3pm":{"nix":{"imports":["../escape.nix"]}}}}`,
+		"linux-x64"), INVALID_SOURCE_PATH);
+	test::@error(parse_manifest(tmem,
+		`{"provides":"bad","vendor":{"c3pm":{"nix":{"imports":"../escape.nix"}}}}`,
 		"linux-x64"), INVALID_SOURCE_PATH);
 }
 
@@ -668,7 +791,7 @@ fn void superseded_metadata_shapes_are_rejected_test() @test
 		`{"dependencies":["foo"],"vendor":{"c3pm":{"c3":{"dependencies":{"foo":{"source":{"type":"github","location":"owner/repo","rev":"v1"}}}}}}}`,
 		"linux-x64"), INVALID_METADATA);
 	test::@error(parse_manifest(tmem,
-		`{"provides":"foo","vendor":{"c3pm":{"nix":{"imports":"./package.nix"}}}}`,
+		`{"provides":"foo","vendor":{"c3pm":{"nix":{"imports":42}}}}`,
 		"linux-x64"), INVALID_METADATA);
 }
 

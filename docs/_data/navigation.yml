@@ -12,6 +12,8 @@
   items:
     - title: Search and add packages
       url: /docs/guides/packages/
+    - title: Package C3 libraries
+      url: /docs/guides/packaging/
     - title: Link libraries and projects
       url: /docs/guides/linking/
     - title: Configure toolchains

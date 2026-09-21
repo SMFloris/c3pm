@@ -38,6 +38,12 @@ struct RegistryPackageDetails
 	String[] versions;
 }
 
+struct RegistryPackageSpec
+{
+	String query;
+	String version;
+}
+
 fn Object*? parse_registry_json(Allocator allocator, String text)
 {
 	Object*? parsed = json::parse(allocator, text);
@@ -298,7 +304,24 @@ fn bool is_registry_package_query(String value)
 	return valid_library_name(value) || is_registry_package_id(value);
 }
 
-fn IndexedRegistryPackage? find_indexed_registry_package(Allocator allocator, String query)
+fn RegistryPackageSpec? parse_registry_package_spec(String value)
+{
+	if (is_registry_package_query(value)) return { .query = value };
+	String[] parts = value.tsplit("@");
+	if (parts.len < 2 || !is_registry_package_query(parts[0])) return {};
+	if (parts.len != 2 || !valid_registry_version(parts[1])) return INVALID_ARGUMENTS~;
+	return { .query = parts[0], .version = parts[1] };
+}
+
+fn String? select_registry_version(String latest, String[] versions, String requested)
+{
+	if (!requested.len) return latest;
+	if (!string_array_contains(versions, requested)) return REGISTRY_VERSION_NOT_FOUND~;
+	return requested;
+}
+
+fn IndexedRegistryPackage? find_indexed_registry_package(Allocator allocator, String query,
+	String registry_filter = "")
 {
 	if (!is_registry_package_query(query)) return INVALID_ARGUMENTS~;
 	bool qualified = is_registry_package_id(query);
@@ -310,6 +333,7 @@ fn IndexedRegistryPackage? find_indexed_registry_package(Allocator allocator, St
 	foreach (registry_index : sorted)
 	{
 		RegistryConfig registry = config.registries[registry_index];
+		if (registry_filter.len && registry.name != registry_filter) continue;
 		String index_path = registry_index_path(tmem, registry.name)!;
 		if (!file::is_file(index_path))
 		{
@@ -358,16 +382,39 @@ fn RegisteredPackageSource? parse_registered_release(Allocator allocator,
 }
 
 fn RegisteredPackageSource? resolve_registry_package(Allocator allocator, String query,
-	NixRunner runner)
+	String requested_version, NixRunner runner)
 {
 	IndexedRegistryPackage indexed = find_indexed_registry_package(tmem, query)!;
+	String version = indexed.package.latest;
+	if (requested_version.len)
+	{
+		RegistryPackageDetails package = read_registry_package_details(tmem, indexed, runner)!;
+		version = select_registry_version(version, package.versions, requested_version)!;
+	}
+	return read_registry_package_release(allocator, indexed, version, runner);
+}
+
+fn RegisteredPackageSource? read_registry_package_release(Allocator allocator,
+	IndexedRegistryPackage indexed, String version, NixRunner runner)
+{
 	String id = indexed.package.id;
-	String latest = indexed.package.latest;
 	String[] parts = id.tsplit("/");
 	String relative = string::format(tmem, "packages/%s/%s/%s.json",
-		parts[0], parts[1], latest);
+		parts[0], parts[1], version);
 	String release_text = read_registry_file(tmem, indexed.registry, relative, runner)!;
-	return parse_registered_release(allocator, indexed.registry, id, latest, release_text);
+	return parse_registered_release(allocator, indexed.registry, id, version, release_text);
+}
+
+fn RegisteredPackageSource[]? read_registry_package_releases(Allocator allocator,
+	IndexedRegistryPackage indexed, RegistryPackageDetails package, NixRunner runner)
+{
+	List{RegisteredPackageSource} releases;
+	releases.init(allocator, package.versions.len);
+	foreach (version : package.versions)
+	{
+		releases.push(read_registry_package_release(allocator, indexed, version, runner)!);
+	}
+	return releases.to_array(allocator);
 }
 
 fn RegistryPackageDetails? read_registry_package_details(Allocator allocator,

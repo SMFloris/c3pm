@@ -90,6 +90,7 @@ With the portable Nix backend, the first Nix operation initializes `nix-portable
 - [Installation and Nix setup](https://c3pm.dev/docs/getting-started/installation/)
 - [How c3pm works](https://c3pm.dev/docs/getting-started/how-it-works/)
 - [Search and add packages](https://c3pm.dev/docs/guides/packages/)
+- [Package C3 libraries](https://c3pm.dev/docs/guides/packaging/)
 - [Manage registries](https://c3pm.dev/docs/guides/registries/)
 - [Link native libraries and projects](https://c3pm.dev/docs/guides/linking/)
 - [Configure toolchains](https://c3pm.dev/docs/guides/toolchains/)
