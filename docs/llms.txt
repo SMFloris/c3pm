@@ -1,0 +1,23 @@
+---
+layout: null
+permalink: /llms.txt
+---
+# {{ site.title }}
+
+> {{ site.description }}
+
+This c3pm manages packages for the C3 programming language and c3c compiler. It is separate from the older C++ project with the same name.
+
+The current documented release is {{ site.c3pm_version }}. The supported platform is Linux x86_64. c3pm manages C3 source dependencies, native libraries, project toolchains, and portable application bundles through Nix.
+
+The links below lead to the official documentation. Package names in a registry use `namespace/name`; a C3 library's manifest `provides` name can differ from its registry package name.
+{% for group in site.data.navigation %}
+## {{ group.title }}
+
+{% for item in group.items %}{% assign document = site.pages | where: 'url', item.url | first %}- [{{ item.title }}]({{ item.url | absolute_url }}): {{ document.description | default: site.description }}
+{% endfor %}{% endfor %}
+## Optional
+
+- [GitHub source](https://github.com/SMFloris/c3pm): C3 source code, issues, and development history.
+- [Releases](https://github.com/SMFloris/c3pm/releases): Released binaries and the installer.
+- [Default package registry](https://github.com/SMFloris/c3pm-registry): Published package metadata used by c3pm.

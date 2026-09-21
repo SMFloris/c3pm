@@ -70,7 +70,6 @@ jobs:
             src/version.c3
           sed -i "s/${readme_c3_pattern}/${C3_VERSION}/g" README.md
           grep -Fx "> **Default C3 target:** C3 ${C3_VERSION}." README.md
-          grep -Fx "The default C3 version is **${C3_VERSION}**. Pin a version for the project, or reset it to the default:" README.md
           c3c --version
           c3c --linux-libc=musl -z -static --cc musl-gcc -O2 build c3pm
           mkdir -p release

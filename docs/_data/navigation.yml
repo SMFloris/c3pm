@@ -1,0 +1,52 @@
+- title: Getting started
+  items:
+    - title: Home
+      url: /
+    - title: Installation
+      url: /docs/getting-started/installation/
+    - title: Quick start
+      url: /docs/getting-started/quickstart/
+    - title: How c3pm works
+      url: /docs/getting-started/how-it-works/
+- title: Guides
+  items:
+    - title: Search and add packages
+      url: /docs/guides/packages/
+    - title: Link libraries and projects
+      url: /docs/guides/linking/
+    - title: Configure toolchains
+      url: /docs/guides/toolchains/
+    - title: Build and run
+      url: /docs/guides/build/
+    - title: Create portable bundles
+      url: /docs/guides/bundles/
+    - title: Manage registries
+      url: /docs/guides/registries/
+- title: Examples
+  items:
+    - title: SQLite application
+      url: /docs/examples/sqlite/
+- title: Reference
+  items:
+    - title: CLI commands
+      url: /docs/reference/cli/
+    - title: Project and library manifests
+      url: /docs/reference/manifests/
+    - title: c3pm metadata
+      url: /docs/reference/metadata/
+    - title: Registry format
+      url: /docs/reference/registry/
+    - title: Lock file
+      url: /docs/reference/lock-file/
+    - title: Installer options
+      url: /docs/reference/installer/
+- title: Internals
+  items:
+    - title: Dependency resolution and Nix
+      url: /docs/internals/dependency-resolution/
+    - title: Portable bundle implementation
+      url: /docs/internals/bundles/
+- title: Contributing
+  items:
+    - title: Build c3pm from source
+      url: /docs/contributing/build-from-source/

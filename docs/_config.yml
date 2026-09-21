@@ -1,12 +1,19 @@
-title: c3pm
-description: A package manager for reproducible C3 projects, powered by Nix.
-url: ""
+title: c3pm — Package Manager for the C3 Programming Language
+description: c3pm is a Nix-backed package manager and reproducible build environment for the C3 programming language and c3c compiler.
+url: "https://c3pm.dev"
 baseurl: ""
 markdown: kramdown
 kramdown:
   input: GFM
   syntax_highlighter: rouge
 permalink: pretty
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: document
+include:
+  - _redirects
 exclude:
   - Gemfile
   - Gemfile.lock

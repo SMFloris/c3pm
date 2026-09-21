@@ -1,0 +1,16 @@
+{% if page.previous_page or page.next_page %}
+<nav class="section-pagination" aria-label="Page navigation">
+  {% if page.previous_page %}
+  <a class="section-page previous" href="{{ page.previous_page.url | relative_url }}">
+    <span>Previous</span>
+    <strong>{{ page.previous_page.title | escape }}</strong>
+  </a>
+  {% endif %}
+  {% if page.next_page %}
+  <a class="section-page next" href="{{ page.next_page.url | relative_url }}">
+    <span>Next</span>
+    <strong>{{ page.next_page.title | escape }}</strong>
+  </a>
+  {% endif %}
+</nav>
+{% endif %}
