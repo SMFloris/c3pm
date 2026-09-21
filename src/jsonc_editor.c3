@@ -509,6 +509,11 @@ fn void append_source_metadata(DString* out, PackageSource source, String indent
 	if (source.rev.len) out.appendf(",\n%s\"rev\": \"%s\"", indent, source.rev);
 	if (source.subdir.len) out.appendf(",\n%s\"subdir\": \"%s\"", indent, source.subdir);
 	if (source.sha256.len) out.appendf(",\n%s\"sha256\": \"%s\"", indent, source.sha256);
+	if (source.raw_archive)
+	{
+		out.appendf(",\n%s\"hashMode\": \"file\"", indent);
+		out.appendf(",\n%s\"archiveType\": \"%s\"", indent, source.archive_type);
+	}
 }
 
 fn String? add_link_declaration(Allocator allocator, String text, LinkSpec link)

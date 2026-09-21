@@ -65,6 +65,7 @@ fn Graph? resolve_graph(Allocator allocator, Metadata* project, String target,
 		file::save(string::format(tmem, "%s/flake.nix", discovery_dir),
 			generate_flake_nix(tmem, &discovery, project))!;
 		runner.lock(discovery_dir)!;
+		foreach (item : pending) verify_locked_source_hash(runner, discovery_dir, item.source)!;
 		bool added;
 		for (sz i = 0; i < pending.len(); i++)
 		{

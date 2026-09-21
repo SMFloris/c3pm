@@ -230,6 +230,9 @@ fn String? install_project(Allocator allocator, Path project_root, NixRunner run
 		write_generated_state(next, project_root, &project, &graph)!;
 		if (update_nixpkgs) { runner.update_input(next, "nixpkgs")!; }
 		else { runner.lock(next)!; }
+		foreach (&node : graph.nodes) verify_locked_source_hash(runner, next, node.source)!;
+		foreach (&link : project.links)
+			if (link.has_source) verify_locked_source_hash(runner, next, link.source)!;
 		validate_all_nix_inputs(runner, next, system, &project.nix)!;
 		validate_link_nix_inputs(runner, next, system, project.links)!;
 		foreach (&node : graph.nodes) validate_all_nix_inputs(runner, next, system, &node.nix)!;

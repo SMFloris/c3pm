@@ -41,9 +41,39 @@ fn void? PackageSource.validate(&self)
 		(self.location.contains("?") || self.location.contains("#"))) return INVALID_SOURCE~;
 	if ((self.kind == GITHUB || self.kind == GIT_HTTPS || self.kind == GIT_SSH) &&
 		!valid_git_ref(self.rev)) return INVALID_SOURCE~;
+	if ((self.kind == GITHUB || self.kind == GIT_HTTPS || self.kind == GIT_SSH) &&
+		self.sha256.len && !valid_sha256_sri(self.sha256)) return INVALID_SOURCE~;
 	if (self.kind == ARCHIVE_HTTPS && !self.sha256.starts_with("sha256-")) return INVALID_SOURCE~;
+	if (self.raw_archive && (self.kind != ARCHIVE_HTTPS ||
+		(self.archive_type != "tar.gz" && self.archive_type != "zip") ||
+		!valid_sha256_sri(self.sha256))) return INVALID_SOURCE~;
+	if (!self.raw_archive && self.archive_type.len) return INVALID_SOURCE~;
 	validate_source_path(self.subdir)!;
 	return;
+}
+
+fn bool valid_sha256_sri(String value)
+{
+	if (value.len != 51 || !value.starts_with("sha256-") || value[50] != '=') return false;
+	for (sz i = 7; i < 50; i++)
+	{
+		char c = value[i];
+		if (!(c.is_alnum() || c == '+' || c == '/')) return false;
+	}
+	return true;
+}
+
+fn bool full_git_commit(String value)
+{
+	if (value.len != 40) return false;
+	foreach (char c : value)
+	{
+		if (!(c.is_digit() || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+		{
+			return false;
+		}
+	}
+	return true;
 }
 
 fn bool valid_git_ref(String rev)
@@ -116,8 +146,10 @@ fn String source_url(Allocator allocator, PackageSource source)
 	switch (source.kind)
 	{
 		case GITHUB: return string::format(allocator, "github:%s/%s", source.location, source.rev);
-		case GIT_HTTPS: return string::format(allocator, "git+%s?ref=%s", source.location, source.rev);
-		case GIT_SSH: return string::format(allocator, "git+%s?ref=%s", source.location, source.rev);
+		case GIT_HTTPS: return string::format(allocator, "git+%s?%s=%s", source.location,
+			full_git_commit(source.rev) ? "rev" : "ref", source.rev);
+		case GIT_SSH: return string::format(allocator, "git+%s?%s=%s", source.location,
+			full_git_commit(source.rev) ? "rev" : "ref", source.rev);
 		case ARCHIVE_HTTPS: return string::format(allocator, "tarball+%s", source.location);
 		case FOLDER:
 			if (source.location.is_absolute_path()!!) { return string::format(allocator, "path:%s", source.location); }
@@ -131,7 +163,9 @@ fn String source_url(Allocator allocator, PackageSource source)
 fn ulong source_identity_hash(PackageSource source)
 {
 	ulong hash = 14695981039346656037;
-	String[] fields = { source_kind_name(source.kind), source.location, source.rev, source.sha256, source.base };
+	String[] fields = { source_kind_name(source.kind), source.location, source.rev,
+		source.sha256, source.base, source.archive_type,
+		source.raw_archive ? "raw" : "tree" };
 	foreach (field : fields)
 	{
 		foreach (char c : field)
@@ -150,13 +184,22 @@ fn String source_input_name(Allocator allocator, PackageSource source)
 	@stack_mem(256; Allocator smem)
 	{
 		DString out = dstring::new_with_capacity(smem, 64);
-		out.append("c3pm_src_");
+		out.append(source.raw_archive ? "c3pm_raw_archive_" : "c3pm_src_");
 		append_nix_identifier_part(&out, source_kind_name(source.kind));
 		out.append("_");
 		append_nix_identifier_part(&out, source.location);
 		out.appendf("_%08x", (uint)source_identity_hash(source));
 		return out.str_view().copy(allocator);
 	};
+}
+
+fn void? verify_locked_source_hash(NixRunner runner, String flake_dir, PackageSource source)
+{
+	if (source.sha256.len && !source.raw_archive)
+	{
+		runner.verify_source_hash(flake_dir, source_input_name(tmem, source), source.sha256)!;
+	}
+	return;
 }
 
 fn void append_nix_identifier_part(DString* out, String value)

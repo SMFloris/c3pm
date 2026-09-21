@@ -26,7 +26,9 @@ Each entry under `vendor.c3pm.c3.dependencies` is a flat source object:
 | `archive+https` | `url` beginning with `https://` | `sha256` in SRI form |
 | `path` | `path` | none |
 
-`subdir` is optional for every source type. These are the only supported source-object forms.
+`subdir` is optional for every source type. A Git source may also have `sha256`, the precomputed Nix hash of the checked-out source tree. c3pm checks it against the locked input after fetching.
+
+When an archive comes from a registry release, c3pm records `hashMode: "file"` and `archiveType: "tar.gz"` or `"zip"` alongside its source. In that case `sha256` verifies the downloaded archive **bytes** before extraction. Directly added `archive+https` sources without `hashMode` retain the older extracted-tree hash behavior. These are the only supported source-object forms.
 
 ## Registry references
 

@@ -79,20 +79,32 @@ Each version needs a matching `<version>.json` file. For example, `packages/vend
   "version": "6",
   "provides": "raylib6",
   "download": {
-    "source": "github",
-    "owner": "SMFloris",
-    "repository": "c3c-vendor",
-    "rev": "3ef0f672970b9bb6a9549470470d37ae25ba55c7",
-    "subdir": "libraries/raylib6.c3l"
+    "type": "git",
+    "url": "git+https://github.com/SMFloris/c3c-vendor.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/libraries/raylib6.c3l",
+    "sha256": "sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="
   },
-  "toolchain": { "c3c": ">=0.8.1 <0.9.0" },
+  "c3_version": ">=0.8.1 <0.9.0",
   "published": "2026-09-18T20:41:02Z"
 }
 ```
 
 ## Source and compatibility fields
 
-`provides` must match the `provides` value in that library's `manifest.json`; it can differ from the registry package name. `download` uses the same [source-object forms]({{ '/docs/reference/metadata/#c3-dependency-sources' | relative_url }}) as `vendor.c3pm.c3.dependencies`: `github`, `git+https`, `git+ssh`, `archive+https`, or `path`. Git sources need `rev`; HTTPS archives need an SRI `sha256` value; `subdir` is optional. `toolchain.c3c` is the declared compiler compatibility range, and `published` is an ISO-8601 timestamp. The current client checks that these two fields are present but does not evaluate the compiler range or timestamp format.
+`provides` must match the `provides` value in that library's `manifest.json`; it can differ from the registry package name. `download` has `type`, `url`, and `sha256` fields. The hash uses SHA-256 in SRI form (`sha256-` followed by Base64).
+
+For `"type": "git"`, use a `git+https://` or `git+ssh://` URL ending in `#COMMIT/SUBDIR`. `COMMIT` is the full 40-character Git commit ID and `SUBDIR` is the relative path to the `.c3l` directory. The hash covers the checked-out source tree in Nix's NAR format, not the Git commit ID. For example, `nix flake prefetch --json 'git+https://example.com/repo.git?rev=COMMIT'` reports that tree hash.
+
+For `"type": "tar.gz"` or `"zip"`, use an HTTPS archive URL. Add `#SUBDIR` when the `.c3l` directory is inside the extracted archive. Here, `sha256` covers the **downloaded archive bytes**, before extraction. For example:
+
+```json
+"download": {
+  "type": "tar.gz",
+  "url": "https://codeload.github.com/SMFloris/c3c-vendor/tar.gz/3ef0f672970b9bb6a9549470470d37ae25ba55c7#libraries/raylib6.c3l",
+  "sha256": "sha256-ugNVXOGUzH63Be4XFi7jaWnvcvZGj3IR1VLbepeONek="
+}
+```
+
+For an archive, compute the hash with `nix hash file --sri ARCHIVE`. Direct dependencies in `project.json` still use the [source-object forms]({{ '/docs/reference/metadata/#c3-dependency-sources' | relative_url }}); a registry release is translated into a pinned dependency when added. `c3_version` is the declared compiler compatibility range, and `published` is an ISO-8601 timestamp. The current client checks that these two fields are present but does not evaluate the compiler range or timestamp format.
 
 ## Publish and validate
 

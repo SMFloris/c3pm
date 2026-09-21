@@ -219,14 +219,20 @@ fn bool link_source_seen_before(Metadata* project, sz position)
 
 fn void append_flake_source(DString* out, PackageSource source)
 {
+	if (source.raw_archive) return;
 	out.append("    "); out.append(source_input_name(tmem, source));
 	out.append(" = {\n      url = "); append_nix_string(out, source_url(tmem, source));
 	out.append(";\n      flake = false;\n");
-	if (source.sha256.len)
-	{
-		out.append("      narHash = "); append_nix_string(out, source.sha256); out.append(";\n");
-	}
 	out.append("    };\n\n");
+}
+
+fn void append_raw_archive_source(DString* out, PackageSource source)
+{
+	out.append("    "); out.append(source_input_name(tmem, source));
+	out.append(" = builtins.fetchTree { type = \"tarball\"; url = \"file://${builtins.fetchurl { url = ");
+	append_nix_string(out, source.location);
+	out.append("; sha256 = "); append_nix_string(out, source.sha256);
+	out.append("; }}\"; };\n");
 }
 
 fn String generate_flake_nix(Allocator allocator, Graph* graph, Metadata* project)
@@ -267,12 +273,28 @@ fn String generate_flake_nix(Allocator allocator, Graph* graph, Metadata* projec
 		"  };\n\n"
 		"  outputs = inputs@{ self, nixpkgs, ... }:\n"
 		"    let\n"
+		"      rawArchives = {\n");
+	foreach (position, index : sorted)
+	{
+		if (source_seen_before(graph, sorted, position)) continue;
+		PackageSource source = graph.nodes[index].source;
+		if (source.raw_archive) append_raw_archive_source(&out, source);
+	}
+	foreach (i, &link : project.links)
+	{
+		if (!link.has_source || graph_has_source(graph, link.source) ||
+			link_source_seen_before(project, i)) continue;
+		if (link.source.raw_archive) append_raw_archive_source(&out, link.source);
+	}
+	out.append(
+		"      };\n"
 		"      systems = [ \"x86_64-linux\" \"aarch64-linux\" \"aarch64-darwin\" \"x86_64-darwin\" ];\n"
 		"      forAllSystems = nixpkgs.lib.genAttrs systems;\n"
 		"      evaluated = forAllSystems (system:\n"
 		"        let pkgs = import nixpkgs { inherit system; };\n"
-		"        in import ./shell.nix { inherit pkgs inputs; });\n"
+		"        in import ./shell.nix { inherit pkgs inputs rawArchives; });\n"
 		"    in {\n"
+		"      c3pmRawArchiveSources = rawArchives;\n"
 		"      devShells = forAllSystems (system: { default = evaluated.${system}.shell; });\n"
 		"      c3pmToolchains = forAllSystems (system: { c3c = evaluated.${system}.c3c; });\n"
 		"      packages = forAllSystems (system:\n"
@@ -299,7 +321,7 @@ fn String generate_shell_nix(Allocator allocator, Graph* graph, Metadata* projec
 	DString out = dstring::new_with_capacity(allocator, 4096);
 	sz[] sorted = sorted_node_indices(tmem, graph);
 	out.append(
-		"{ pkgs, inputs }:\n\n"
+		"{ pkgs, inputs, rawArchives }:\n\n"
 		"let\n"
 		"  c3pm = import ./c3pm-lib.nix { inherit pkgs; };\n"
 		"  c3cSource = if project.c3cVersion == \"\" then null else inputs.c3c-source;\n"
@@ -310,14 +332,15 @@ fn String generate_shell_nix(Allocator allocator, Graph* graph, Metadata* projec
 		GraphNode* node = &graph.nodes[index];
 		out.append("    ");
 		append_nix_string(&out, node.name);
-		out.append(" = inputs.");
+		out.append(node.source.raw_archive ? " = rawArchives." : " = inputs.");
 		out.append(source_input_name(tmem, node.source));
 		out.append(";\n");
 	}
 	foreach (&link : project.links)
 	{
 		if (!link.has_source) continue;
-		out.append("    "); append_nix_string(&out, link.name); out.append(" = inputs.");
+		out.append("    "); append_nix_string(&out, link.name);
+		out.append(link.source.raw_archive ? " = rawArchives." : " = inputs.");
 		out.append(source_input_name(tmem, link.source)); out.append(";\n");
 	}
 	out.append("  };\n\n  deps = pkgs.lib.fix (self: {\n");

@@ -59,7 +59,7 @@ No registry entry is required. Direct dependencies are identified by their sourc
 
 ### Registry release
 
-To make the release searchable and installable by name and version, add a version manifest such as `packages/vendor/raylib/5.5.0.json` to a registry. Set its `download` source to the pinned release, its `subdir` to the binding directory, and its `provides` value to the `.c3l` manifest's `provides`. Add `5.5.0` to the package's `package.json` `versions` array, and update `index.json` if its `latest` changes. Every published version needs its own version manifest.
+To make the release searchable and installable by name and version, add a version manifest such as `packages/vendor/raylib/5.5.0.json` to a registry. Set its `download.url` to a pinned Git commit and binding subdirectory (`git+https://HOST/REPO.git#COMMIT/SUBDIR`), or to a verified HTTPS archive; set `download.sha256` to the corresponding source-tree or archive-file hash. Set `provides` to the `.c3l` manifest's `provides`. Add `5.5.0` to the package's `package.json` `versions` array, and update `index.json` if its `latest` changes. Every published version needs its own version manifest.
 
 See the [Registry format reference]({{ '/docs/reference/registry/' | relative_url }}) for the JSON schema and validation workflow. After users refresh the registry index, they can discover and select the release:
 

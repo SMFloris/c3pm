@@ -1,11 +1,16 @@
 module c3pm;
 
 import std::collections::list;
+import std::collections::object;
+import std::encoding::json;
+import std::io;
+import std::io::file;
 import std::os::process;
 
 interface NixRunner
 {
 	fn void? lock(String flake_dir);
+	fn void? verify_source_hash(String flake_dir, String input_name, String expected);
 	fn void? update_input(String flake_dir, String input_name);
 	fn String? eval_json(Allocator allocator, String flake_dir, String expression);
 	fn String? build(Allocator allocator, String flake_ref);
@@ -81,6 +86,33 @@ fn void? PortableNixRunner.lock(&self, String flake_dir) @dynamic
 	return;
 }
 
+fn void? PortableNixRunner.verify_source_hash(&self, String flake_dir,
+	String input_name, String expected) @dynamic
+{
+	@pool()
+	{
+		String filename = string::format(tmem, "%s/flake.lock", flake_dir);
+		Object*? parsed = json::parse(tmem, (String)file::load(tmem, filename)!);
+		if (catch parsed) return NIX_FAILED~;
+		if (!parsed.is_map() || !parsed.has_key("nodes")) return NIX_FAILED~;
+		Object* nodes = parsed.get("nodes")!;
+		if (!nodes.is_map() || !nodes.has_key(input_name)) return NIX_FAILED~;
+		Object* node = nodes.get(input_name)!;
+		if (!node.is_map() || !node.has_key("locked")) return NIX_FAILED~;
+		Object* locked = node.get("locked")!;
+		if (!locked.is_map() || !locked.has_key("narHash") ||
+			!locked.get("narHash")!.is_string()) return NIX_FAILED~;
+		String actual = locked.get_string("narHash")!;
+		if (actual != expected)
+		{
+			io::eprintfn("c3pm: source hash mismatch for %s (expected %s, got %s).",
+				input_name, expected, actual);
+			return SOURCE_HASH_MISMATCH~;
+		}
+	};
+	return;
+}
+
 fn void? PortableNixRunner.update_input(&self, String flake_dir, String input_name) @dynamic
 {
 	@pool()
@@ -111,12 +143,25 @@ fn String? PortableNixRunner.build(&self, Allocator allocator, String flake_ref)
 {
 	@pool()
 	{
-		String[] command = self.command(tmem,
-			{ "build", "--quiet", "--no-link", "--no-update-lock-file", "--print-out-paths", flake_ref });
+		List{String} args;
+		args.tinit();
+		args.push_all({ "build", "--quiet", "--no-link", "--no-update-lock-file", "--print-out-paths" });
+		if (flake_has_raw_archives(flake_ref)) args.push("--impure");
+		args.push(flake_ref);
+		String[] command = self.command(tmem, args.array_view());
 		String output = capture_nix_output(tmem, command, 1024 * 1024)!;
 		if (!output.len) return NIX_FAILED~;
 		return output.trim().copy(allocator);
 	};
+}
+
+fn bool flake_has_raw_archives(String flake_ref)
+{
+	if (!flake_ref.starts_with("path:")) return false;
+	String[] parts = flake_ref[5..].tsplit("#");
+	String filename = string::format(tmem, "%s/flake.nix", parts[0]);
+	if (!file::is_file(filename)) return false;
+	return ((String)file::load(tmem, filename)!!).contains("c3pm_raw_archive_");
 }
 
 fn void? PortableNixRunner.bundle(&self, String installable,
@@ -125,11 +170,12 @@ fn void? PortableNixRunner.bundle(&self, String installable,
 	@pool()
 	{
 		String nix_link = string::format(tmem, "%s.nix-link", output_link);
-		String[] command = self.command(tmem, {
-			"bundle", "--quiet", "--no-update-lock-file",
-			"--out-link", nix_link,
-			installable,
-		});
+		List{String} args;
+		args.tinit();
+		args.push_all({ "bundle", "--quiet", "--no-update-lock-file" });
+		if (flake_has_raw_archives(installable)) args.push("--impure");
+		args.push_all({ "--out-link", nix_link, installable });
+		String[] command = self.command(tmem, args.array_view());
 		int status = process::run(command, process::SpawnOptions.INHERIT_ENV,
 			out: process::INHERIT, err: process::INHERIT)!;
 		if (status != 0) return BUNDLE_FAILED~;
@@ -145,10 +191,12 @@ fn void? PortableNixRunner.bundle(&self, String installable,
 		{
 			bundled_executable = nix_link;
 		}
-		String[] copy_command = self.command(tmem, {
-			"develop", "--quiet", "--no-update-lock-file", flake_ref,
-			"-c", "cp", "--dereference", bundled_executable, output_link,
-		});
+		List{String} copy_args;
+		copy_args.tinit();
+		copy_args.push_all({ "develop", "--quiet", "--no-update-lock-file" });
+		if (flake_has_raw_archives(flake_ref)) copy_args.push("--impure");
+		copy_args.push_all({ flake_ref, "-c", "cp", "--dereference", bundled_executable, output_link });
+		String[] copy_command = self.command(tmem, copy_args.array_view());
 		status = process::run(copy_command, process::SpawnOptions.INHERIT_ENV,
 			out: process::INHERIT, err: process::INHERIT)!;
 		if (status != 0) return BUNDLE_FAILED~;
@@ -163,6 +211,7 @@ fn int? PortableNixRunner.develop(&self, String flake_ref, String[] requested) @
 		List{String} args;
 		args.tinit();
 		args.push("develop");
+		if (flake_has_raw_archives(flake_ref)) args.push("--impure");
 		args.push(flake_ref);
 		if (requested.len)
 		{
@@ -203,9 +252,11 @@ fn String? PortableNixRunner.read_source_json(&self, Allocator allocator, String
 	@pool()
 	{
 		validate_source_path(relative_path)!;
+		String source_set = input_name.starts_with("c3pm_raw_archive_")
+			? "c3pmRawArchiveSources" : "inputs";
 		String expression = string::format(tmem,
-			`let f = builtins.getFlake "path:%s"; in builtins.fromJSON (builtins.readFile (f.inputs.%s + "/%s"))`,
-			flake_dir, input_name, relative_path);
+			`let f = builtins.getFlake "path:%s"; in builtins.fromJSON (builtins.readFile (f.%s.%s + "/%s"))`,
+			flake_dir, source_set, input_name, relative_path);
 		return self.eval_json(allocator, flake_dir, expression);
 	};
 }

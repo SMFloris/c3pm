@@ -18,6 +18,7 @@ faultdef INVALID_ARGUMENTS,
 	REGISTRY_VERSION_NOT_FOUND,
 	AMBIGUOUS_DEPENDENCY_UPDATE,
 	NIX_DOWNLOAD_FAILED,
+	SOURCE_HASH_MISMATCH,
 	NIX_FAILED,
 	TRANSACTION_FAILED,
 	UNKNOWN_TARGET,
@@ -51,6 +52,9 @@ struct PackageSource
 	String rev;
 	String subdir;
 	String sha256;
+	// Registry archives hash the downloaded file; legacy archive sources hash the extracted tree.
+	bool raw_archive;
+	String archive_type;
 	// Runtime-only base for relative folder sources; never serialized.
 	String base;
 }
@@ -125,13 +129,15 @@ struct Graph
 fn bool source_equal(PackageSource a, PackageSource b)
 {
 	return a.kind == b.kind && a.location == b.location && a.rev == b.rev &&
-		a.subdir == b.subdir && a.sha256 == b.sha256;
+		a.subdir == b.subdir && a.sha256 == b.sha256 &&
+		a.raw_archive == b.raw_archive && a.archive_type == b.archive_type;
 }
 
 fn bool source_identity_equal(PackageSource a, PackageSource b)
 {
 	return a.kind == b.kind && a.location == b.location && a.rev == b.rev &&
-		a.sha256 == b.sha256 && a.base == b.base;
+		a.sha256 == b.sha256 && a.base == b.base &&
+		a.raw_archive == b.raw_archive && a.archive_type == b.archive_type;
 }
 
 fn GraphNode*? Graph.find(&self, String name)

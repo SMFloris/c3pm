@@ -75,6 +75,9 @@ fn PackageSource? parse_source_object(Allocator allocator, Object* declaration)
 {
 	if (!declaration.is_map() || !declaration.has_key("source") ||
 		!declaration.get("source")!.is_string()) return INVALID_METADATA~;
+	if (declaration.has_key("hashMode") &&
+		(!declaration.get("hashMode")!.is_string() ||
+		declaration.get_string("hashMode")! != "file")) return INVALID_METADATA~;
 	SourceKind kind = parse_source_kind(declaration.get_string("source")!)!;
 	String location;
 	switch (kind)
@@ -93,6 +96,10 @@ fn PackageSource? parse_source_object(Allocator allocator, Object* declaration)
 		.rev = declaration.has_key("rev") ? declaration.get_string("rev")!.copy(allocator) : "",
 		.subdir = declaration.has_key("subdir") ? declaration.get_string("subdir")!.copy(allocator) : "",
 		.sha256 = declaration.has_key("sha256") ? declaration.get_string("sha256")!.copy(allocator) : "",
+		.raw_archive = declaration.has_key("hashMode") &&
+			declaration.get_string("hashMode")! == "file",
+		.archive_type = declaration.has_key("archiveType")
+			? declaration.get_string("archiveType")!.copy(allocator) : "",
 	};
 	parsed.validate()!;
 	return parsed;

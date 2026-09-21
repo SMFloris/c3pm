@@ -22,6 +22,7 @@ fn String? fetch_added_manifest(Allocator allocator, Path project_root,
 		file::save(string::format(tmem, "%s/flake.nix", temporary),
 			generate_flake_nix(tmem, &graph, &project))!;
 		runner.lock(temporary)!;
+		verify_locked_source_hash(runner, temporary, source)!;
 		return runner.read_manifest(allocator, temporary,
 			source_input_name(tmem, source), source.subdir);
 	};
@@ -45,6 +46,7 @@ fn void? validate_linked_project_target(Allocator allocator, Path project_root,
 		file::save(string::format(tmem, "%s/flake.nix", temporary),
 			generate_flake_nix(tmem, &graph, &probe))!;
 		runner.lock(temporary)!;
+		verify_locked_source_hash(runner, temporary, link.source)!;
 		String relative = link.source.subdir.len
 			? string::format(tmem, "%s/project.json", link.source.subdir) : "project.json";
 		String json = runner.read_source_json(tmem, temporary,

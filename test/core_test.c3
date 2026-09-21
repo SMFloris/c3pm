@@ -1,6 +1,8 @@
 module c3pm;
 
 import std::core::test;
+import std::collections::object;
+import std::encoding::json;
 import std::io::file;
 import std::io::path;
 
@@ -145,16 +147,60 @@ fn void registry_schema_is_validated_through_reader_test() @test
 		`{"name":"C3 Vendor","version":1,"generated":"2026-09-21T00:00:00Z"}`,
 		`{"packages":[{"id":"vendor/raylib","name":"raylib","namespace":"vendor","latest":"5.5","description":"Raylib bindings","tags":["graphics"]}]}`,
 		`{"id":"vendor/raylib","name":"raylib","namespace":"vendor","description":"Raylib bindings","homepage":"https://raylib.com","repository":"https://github.com/raysan5/raylib","tags":["graphics"],"versions":["5.5"]}`,
-		`{"name":"raylib","namespace":"vendor","version":"5.5","provides":"raylib","download":{"source":"github","owner":"SMFloris","repository":"c3c-vendor","rev":"main","subdir":"libraries/raylib.c3l"},"toolchain":{"c3c":">=0.8.1 <0.9.0"},"published":"2026-09-21T00:00:00Z"}`,
+		`{"name":"raylib","namespace":"vendor","version":"5.5","provides":"raylib","download":{"type":"git","url":"git+https://github.com/SMFloris/c3c-vendor.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/libraries/raylib.c3l","sha256":"sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="},"c3_version":">=0.8.1 <0.9.0","published":"2026-09-21T00:00:00Z"}`,
 	};
 	FakeNixRunner fake = { .paths = paths, .manifests = documents };
 	NixRunner runner = (NixRunner)&fake;
 	PackageSource source = parse_source(tmem, "github:acme/registry", "main", "", "")!!;
 	validate_registry(tmem, source, runner, "/tmp/probe", "registry")!!;
+	String valid_release = documents[3];
+	documents[3] = `{"name":"raylib","namespace":"vendor","version":"5.5","provides":"raylib","download":{"type":"git","url":"git+https://github.com/SMFloris/c3c-vendor.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/libraries/raylib.c3l","sha256":"sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="},"toolchain":{"c3c":">=0.8.1 <0.9.0"},"published":"2026-09-21T00:00:00Z"}`;
+	test::@error(validate_registry(tmem, source, runner, "/tmp/probe", "registry"),
+		INVALID_REGISTRY);
+	documents[3] = valid_release;
 
 	documents[1] = `{"packages":[{"id":"wrong/id","name":"raylib","namespace":"vendor","latest":"5.5","description":"","tags":[]}]}`;
 	test::@error(validate_registry(tmem, source, runner, "/tmp/probe", "registry"),
 		INVALID_REGISTRY);
+}
+
+fn void registry_download_archives_use_file_hashes_test() @test
+{
+	Object* archive_json = json::parse(tmem,
+		`{"type":"zip","url":"https://example.com/release.zip#libraries/demo.c3l","sha256":"sha256-pbtvLJ9dEbuxj6m2KNJXLq62HJs49PJDsmVSCBeLdnM="}`)!!;
+	PackageSource archive = parse_registry_download(tmem, archive_json)!!;
+	test::@check(archive.raw_archive);
+	test::eq("zip", archive.archive_type);
+	test::eq("https://example.com/release.zip", archive.location);
+	test::eq("libraries/demo.c3l", archive.subdir);
+	GraphNode[] nodes = { { .name = "demo", .source = archive } };
+	Graph graph = { .nodes = nodes };
+	Metadata project = {};
+	String flake = generate_flake_nix(tmem, &graph, &project);
+	String shell = generate_shell_nix(tmem, &graph, &project);
+	test::@check(flake.contains(`builtins.fetchurl { url = "https://example.com/release.zip"; sha256 = "sha256-pbtvLJ9dEbuxj6m2KNJXLq62HJs49PJDsmVSCBeLdnM="; }`));
+	test::@check(flake.contains(`c3pmRawArchiveSources = rawArchives;`));
+	test::@check(shell.contains(`= rawArchives.c3pm_raw_archive_`));
+	Object* bad_hash = json::parse(tmem,
+		`{"type":"git","url":"git+https://example.com/repo.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/lib.c3l","sha256":"not-a-hash"}`)!!;
+	test::@error(parse_registry_download(tmem, bad_hash), INVALID_REGISTRY);
+	Object* mutable_ref = json::parse(tmem,
+		`{"type":"git","url":"git+https://example.com/repo.git#main/lib.c3l","sha256":"sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="}`)!!;
+	test::@error(parse_registry_download(tmem, mutable_ref), INVALID_REGISTRY);
+}
+
+fn void pinned_git_source_hash_is_checked_against_lock_test() @test
+{
+	String scratch = "/tmp/c3pm-registry-source-hash-test";
+	path::mkdir(scratch, true)!!;
+	file::save(string::format(tmem, "%s/flake.lock", scratch),
+		`{"nodes":{"c3pm_test_source":{"locked":{"narHash":"sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="}}}}`)!!;
+	PortableNixRunner runner = portable_nix_runner("nix", true, false);
+	runner.verify_source_hash(scratch, "c3pm_test_source",
+		"sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ=")!!;
+	test::@error(runner.verify_source_hash(scratch, "c3pm_test_source",
+		"sha256-pbtvLJ9dEbuxj6m2KNJXLq62HJs49PJDsmVSCBeLdnM="),
+		SOURCE_HASH_MISMATCH);
 }
 
 fn void registry_search_matches_all_tokens_and_sorts_by_relevance_test() @test
@@ -197,14 +243,16 @@ fn void registry_package_reference_resolves_download_source_test() @test
 	RegistryConfig registry = { .name = "default" };
 	RegisteredPackageSource resolved = parse_registered_release(tmem, registry,
 		"vendor/raylib", "6",
-		`{"name":"raylib","namespace":"vendor","version":"6","provides":"raylib","download":{"source":"github","owner":"SMFloris","repository":"c3c-vendor","rev":"main","subdir":"libraries/raylib.c3l"}}`)!!;
+		`{"name":"raylib","namespace":"vendor","version":"6","provides":"raylib","download":{"type":"git","url":"git+https://github.com/SMFloris/c3c-vendor.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/libraries/raylib.c3l","sha256":"sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="},"c3_version":">=0.8.1 <0.9.0","published":"2026-09-21T00:00:00Z"}`)!!;
 	test::eq("default", resolved.registry);
 	test::eq("raylib", resolved.provides);
-	test::eq(SourceKind.GITHUB, resolved.source.kind);
-	test::eq("SMFloris/c3c-vendor", resolved.source.location);
+	test::eq(SourceKind.GIT_HTTPS, resolved.source.kind);
+	test::eq("https://github.com/SMFloris/c3c-vendor.git", resolved.source.location);
+	test::eq("3ef0f672970b9bb6a9549470470d37ae25ba55c7", resolved.source.rev);
+	test::eq("sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ=", resolved.source.sha256);
 	test::eq("libraries/raylib.c3l", resolved.source.subdir);
 	test::@error(parse_registered_release(tmem, registry, "vendor/raylib", "5.5",
-		`{"name":"raylib","namespace":"vendor","version":"6","provides":"raylib","download":{"source":"github","owner":"a","repository":"b","rev":"main"}}`),
+		`{"name":"raylib","namespace":"vendor","version":"6","provides":"raylib","download":{"type":"git","url":"git+https://example.com/repo.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/library.c3l","sha256":"sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="}}`),
 		INVALID_REGISTRY);
 }
 
@@ -239,6 +287,12 @@ fn void? FakeNixRunner.lock(&self, String flake_dir) @dynamic
 {
 	self.locks++;
 	file::save(string::format(tmem, "%s/flake.lock", flake_dir), "{}")!;
+	return;
+}
+
+fn void? FakeNixRunner.verify_source_hash(&self, String flake_dir,
+	String input_name, String expected) @dynamic
+{
 	return;
 }
 

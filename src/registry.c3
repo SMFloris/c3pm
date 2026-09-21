@@ -71,6 +71,40 @@ fn String? registry_string(Object* parent, String key)
 	return parent.get_string(key)!;
 }
 
+fn PackageSource? parse_registry_download(Allocator allocator, Object* download)
+{
+	String kind = required_string(download, "type")!;
+	String url = required_string(download, "url")!;
+	String hash = required_string(download, "sha256")!;
+	if (!valid_sha256_sri(hash)) return INVALID_REGISTRY~;
+	String[] fragments = url.tsplit("#");
+	if (fragments.len > 2) return INVALID_REGISTRY~;
+	if (kind == "git")
+	{
+		if (fragments.len != 2) return INVALID_REGISTRY~;
+		if (!fragments[0].starts_with("git+https://") &&
+			!fragments[0].starts_with("git+ssh://")) return INVALID_REGISTRY~;
+		String[] parts = fragments[1].tsplit("/");
+		if (parts.len < 2 || !full_git_commit(parts[0])) return INVALID_REGISTRY~;
+		String subdir = fragments[1][parts[0].len + 1..];
+		if (!subdir.len) return INVALID_REGISTRY~;
+		PackageSource source = parse_source(allocator, fragments[0], parts[0], subdir, hash)!;
+		return source;
+	}
+	else if (kind == "tar.gz" || kind == "zip")
+	{
+		String subdir = fragments.len == 2 ? fragments[1] : "";
+		if (fragments.len == 2 && !subdir.len) return INVALID_REGISTRY~;
+		PackageSource source = parse_source(allocator,
+			string::format(tmem, "archive+%s", fragments[0]), "", subdir, hash)!;
+		source.raw_archive = true;
+		source.archive_type = kind.copy(allocator);
+		source.validate()!;
+		return source;
+	}
+	else { return INVALID_REGISTRY~; }
+}
+
 fn String[]? registry_string_array(Allocator allocator, Object* parent, String key,
 	bool allow_empty = true)
 {
@@ -193,13 +227,9 @@ fn String? validate_registry(Allocator allocator, PackageSource source, NixRunne
 			{
 				return INVALID_REGISTRY~;
 			}
-			PackageSource? download = parse_source_object(tmem, release.get("download")!);
+			PackageSource? download = parse_registry_download(tmem, release.get("download")!);
 			if (catch download) return INVALID_REGISTRY~;
-			if (!release.has_key("toolchain") || !release.get("toolchain")!.is_map())
-			{
-				return INVALID_REGISTRY~;
-			}
-			(void)required_string(release.get("toolchain")!, "c3c")!;
+			(void)required_string(release, "c3_version")!;
 		}
 	}
 	return index_text.copy(allocator);
@@ -370,7 +400,9 @@ fn RegisteredPackageSource? parse_registered_release(Allocator allocator,
 		return INVALID_REGISTRY~;
 	}
 	String provides = required_string(release, "provides")!;
-	PackageSource? source = parse_source_object(allocator, release.get("download")!);
+	(void)required_string(release, "c3_version")!;
+	(void)required_string(release, "published")!;
+	PackageSource? source = parse_registry_download(allocator, release.get("download")!);
 	if (catch source) return INVALID_REGISTRY~;
 	return {
 		.registry = registry.name.copy(allocator),
@@ -459,6 +491,7 @@ fn String? validate_registry_source(PackageSource source, String name)
 	file::save(string::format(tmem, "%s/flake.nix", temporary),
 		generate_registry_probe_flake(tmem, source))!;
 	reader.lock(temporary)!;
+	verify_locked_source_hash(reader, temporary, source)!;
 	return validate_registry(tmem, source, reader, temporary, source_input_name(tmem, source));
 }
 
