@@ -3,8 +3,8 @@
 [![CI](https://github.com/SMFloris/c3pm/actions/workflows/pr.yml/badge.svg)](https://github.com/SMFloris/c3pm/actions/workflows/pr.yml)
 [![Release builds](https://github.com/SMFloris/c3pm/actions/workflows/release.yml/badge.svg)](https://github.com/SMFloris/c3pm/actions/workflows/release.yml)
 ![Linux x86_64: published](https://img.shields.io/badge/Linux%20x86__64-published-2ea44f)
-![Linux ARM64: CI target](https://img.shields.io/badge/Linux%20ARM64-CI%20target-orange)
-![macOS ARM64: CI target](https://img.shields.io/badge/macOS%20ARM64-CI%20target-orange)
+![Linux ARM64: published](https://img.shields.io/badge/Linux%20ARM64-published-2ea44f)
+![macOS ARM64: published](https://img.shields.io/badge/macOS%20ARM64-published-2ea44f)
 ![macOS Intel: source build](https://img.shields.io/badge/macOS%20Intel-source%20build-blue)
 
 <p align="center">
