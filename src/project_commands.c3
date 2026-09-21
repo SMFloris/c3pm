@@ -99,7 +99,7 @@ fn void print_dep_help()
 		"Usage:\n"
 		"  c3pm add SOURCE [options]  (alias for c3pm dep add)\n"
 		"  c3pm remove NAME [--for-target TARGET]  (alias for c3pm dep remove)\n"
-		"  c3pm dep add SOURCE [--rev REF] [--sha256 HASH] [--subdir PATH]\n"
+		"  c3pm dep add SOURCE|NAMESPACE/NAME [--rev REF] [--sha256 HASH] [--subdir PATH]\n"
 		"                        [--name NAME] [--for-target TARGET]\n"
 		"  c3pm dep remove NAME [--for-target TARGET]\n"
 		"  c3pm dep list [--for-target TARGET]");
@@ -110,10 +110,32 @@ fn int? run_dep_command(String[] args, Path root, NixRunner runner)
 	if (args.len >= 4 && args[2] == "add")
 	{
 		SourceOptions options = parse_dependency_options(args, 3)!;
-		PackageSource source = parse_source(tmem, options.value, options.rev,
-			options.subdir, options.sha256)!;
+		PackageSource source;
+		String requested_name = options.name;
+		if (is_registry_package_id(options.value))
+		{
+			if (options.rev.len || options.sha256.len || options.subdir.len)
+			{
+				return INVALID_ARGUMENTS~;
+			}
+			RegisteredPackageSource registered = resolve_registry_package(tmem,
+				options.value, runner)!;
+			if (requested_name.len && requested_name != registered.provides)
+			{
+				return PROVIDES_MISMATCH~;
+			}
+			requested_name = registered.provides;
+			source = registered.source;
+			io::printfn("Resolved %s@%s from registry '%s'", registered.id,
+				registered.version, registered.registry);
+		}
+		else
+		{
+			source = parse_source(tmem, options.value, options.rev,
+				options.subdir, options.sha256)!;
+		}
 		if (source.kind == FOLDER) { source.base = ((String)root).copy(tmem); }
-		String added = add_dependency(tmem, root, source, options.name,
+		String added = add_dependency(tmem, root, source, requested_name,
 			options.for_target, runner)!;
 		io::printfn("Added C3 dependency \"%s\"", added);
 		return 0;

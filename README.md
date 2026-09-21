@@ -65,11 +65,13 @@ With the portable Nix backend, the first Nix operation initializes `nix-portable
 Run c3pm from the directory containing `project.json` or from any directory below it. c3pm finds the project root automatically.
 
 ```text
-c3pm add SOURCE [options]
+c3pm add SOURCE|NAMESPACE/NAME [options]
 c3pm remove NAME [--for-target TARGET]
 c3pm list [--for-target TARGET]
 c3pm dep <add|remove|list> ...
 c3pm link <add|remove|list> ...
+c3pm registry <add|remove|update|list> ...
+c3pm search [QUERY...] [--registry NAME] [--tag TAG]
 c3pm toolchain <show|c3c|nixpkgs|nix> ...
 c3pm install
 c3pm shell [-- COMMAND...]
@@ -83,6 +85,8 @@ c3pm bundle [TARGET] [--output PATH]
 | `c3pm list` | List both C3 dependencies and links. |
 | [`c3pm dep`](#c3-dependencies) | Add, list, or remove C3 source dependencies. |
 | [`c3pm link`](#linking-libraries-and-projects) | Manage native packages, Nix definitions, and linked C3 library targets. |
+| [`c3pm registry`](#registries) | Add, remove, update, or list package registries. |
+| [`c3pm search`](#searching-registries) | Search locally indexed registry packages. |
 | [`c3pm toolchain`](#toolchain) | Pin C3 and nixpkgs, and select the user's Nix backend. |
 | [`c3pm install`](#synchronize-the-project) | Resolve the dependency graph and synchronize generated project state. |
 | [`c3pm shell`](#development-shell) | Enter the locked environment or run one command inside it. |
@@ -154,6 +158,54 @@ C3PM_NIX=/path/to/nix c3pm install
 C3PM_NIX_PORTABLE=/path/to/nix-portable c3pm install
 ```
 
+## Registries
+
+Registries are user-level configuration and can be managed outside a C3 project. Each name points to a folder or a reproducible remote source:
+
+```sh
+c3pm registry add vendor path:/home/me/Projects/c3pm-registry
+c3pm registry add community github:example/c3-registry --rev main
+c3pm registry add internal git+https://git.example.com/c3/registry.git --rev release
+c3pm registry add private git+ssh://git@git.example.com/c3/registry.git --rev main
+c3pm registry add snapshots archive+https://example.com/registry.tar.gz \
+  --sha256 sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+
+c3pm registry list
+c3pm registry update
+c3pm registry update community
+c3pm registry remove community
+```
+
+The full syntax is:
+
+```text
+c3pm registry add NAME SOURCE [--rev REF] [--sha256 HASH] [--subdir PATH]
+c3pm registry remove NAME
+c3pm registry update [NAME]
+c3pm registry list
+```
+
+GitHub and Git sources require `--rev`. Archive sources require an SRI SHA-256 value via `--sha256`. `--subdir` selects a registry nested within the source. Folder paths are converted to absolute paths when saved.
+
+Before saving an entry, `registry add` validates `registry.json`, `index.json`, every indexed package file, and every declared version manifest. `registry update` fetches and validates every saved registry; pass a name to update only one. Remote registries are fetched and locked through Nix; folder registries are read directly. `registry list` is deterministic and does not access the network.
+
+Registry entries share `$XDG_CONFIG_HOME/c3pm/config.json` (or `~/.config/c3pm/config.json`) with the selected Nix backend. Updating either setting preserves the other.
+
+### Searching registries
+
+`registry add` and `registry update` save validated index snapshots under `$XDG_CACHE_HOME/c3pm/registries` (or `~/.cache/c3pm/registries`). Search reads only those snapshots, so it works outside a project and does not invoke Nix or access the network.
+
+On the first search, when no registries are configured, c3pm automatically adds and indexes `github:SMFloris/c3pm-registry` at its `master` branch under the name `default`. This initial bootstrap uses the configured Nix backend; searches after it use the local index without network access.
+
+```sh
+c3pm search
+c3pm search ray
+c3pm search sqlite database
+c3pm search image --registry vendor --tag graphics
+```
+
+All query words must match the package ID, name, namespace, description, or tags. Exact names and IDs rank first, followed by prefixes, tags, and substring matches. Results with equal relevance are sorted by registry and package ID.
+
 ## C3 dependencies
 
 `c3pm add SOURCE [options]` and `c3pm remove NAME [--for-target TARGET]` are shorter aliases for `c3pm dep add` and `c3pm dep remove`. They accept the same options as their full forms.
@@ -164,6 +216,7 @@ C3PM_NIX_PORTABLE=/path/to/nix-portable c3pm install
 
 ```sh
 c3pm dep add github:OWNER/REPO --rev REF [--subdir PATH]
+c3pm dep add NAMESPACE/NAME
 ```
 
 Example:
@@ -173,6 +226,14 @@ c3pm dep add github:SMFloris/c3c-vendor \
   --rev c3pm \
   --subdir libraries/sqlite3.c3l
 ```
+
+When the argument has the `namespace/name` form, c3pm resolves it through the locally indexed registries, selects the package's `latest` version, reads that version manifest, and installs its declared `download` source:
+
+```sh
+c3pm dep add vendor/raylib
+```
+
+Run `c3pm registry update` to refresh available versions. If more than one registry contains the same package ID, resolution fails as ambiguous.
 
 `dep add`:
 

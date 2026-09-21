@@ -1,8 +1,6 @@
 module c3pm;
 
 import libc;
-import std::collections::object;
-import std::encoding::json;
 import std::io;
 import std::io::file;
 import std::io::path;
@@ -59,31 +57,15 @@ fn void append_json_string(DString* out, String value)
 
 fn String encode_nix_backend_config(Allocator allocator, NixBackendConfig config)
 {
-	DString out = dstring::new_with_capacity(allocator, config.executable.len + 64);
-	out.append("{\n  \"nix\": {\n    \"mode\": ");
-	append_json_string(&out, config.mode);
-	out.append(",\n    \"path\": ");
-	append_json_string(&out, config.executable);
-	out.append("\n  }\n}\n");
-	return out.str_view();
+	UserConfig user = { .has_nix = true, .nix = config };
+	return encode_user_config(allocator, &user);
 }
 
 fn NixBackendConfig? parse_nix_backend_config(Allocator allocator, String text)
 {
-	Object* root = json::parse(allocator, text)!;
-	if (!root.is_map() || !root.has_key("nix")) return INVALID_NIX_CONFIG~;
-	Object* nix = root.get("nix")!;
-	if (!nix.is_map() || !nix.has_key("mode") || !nix.has_key("path"))
-	{
-		return INVALID_NIX_CONFIG~;
-	}
-	String mode = nix.get_string("mode")!;
-	String executable = nix.get_string("path")!;
-	if ((mode != "native" && mode != "portable") || !executable.len)
-	{
-		return INVALID_NIX_CONFIG~;
-	}
-	return { .mode = mode.copy(allocator), .executable = executable.copy(allocator) };
+	UserConfig config = parse_user_config(allocator, text)!;
+	if (!config.has_nix) return INVALID_NIX_CONFIG~;
+	return config.nix;
 }
 
 fn bool executable_file(String candidate)
@@ -114,26 +96,19 @@ fn String? find_executable(Allocator allocator, String name)
 
 fn void? save_nix_backend_config(NixBackendConfig config)
 {
-	String destination = xdg_config_path(tmem)!;
-	String parent = destination.path_tdirname()!;
-	path::mkdir(parent, true)!;
-	String temporary = string::format(tmem, "%s.tmp", destination);
-	defer (void)file::delete(temporary);
-	file::save(temporary, encode_nix_backend_config(tmem, config))!;
-	if (chmod(temporary.zstr_tcopy(), 0o600) != 0) return TRANSACTION_FAILED~;
-	if (libc::rename(temporary.zstr_tcopy(), destination.zstr_tcopy()) != 0)
-	{
-		return TRANSACTION_FAILED~;
-	}
-	return;
+	UserConfig user = load_user_config(tmem)!;
+	user.has_nix = true;
+	user.nix = config;
+	return save_user_config(&user);
 }
 
 fn NixBackendConfig? load_nix_backend_config(Allocator allocator)
 {
 	String config_path = xdg_config_path(tmem)!;
 	if (!file::is_file(config_path)) return NOT_FOUND~;
-	String contents = (String)file::load(tmem, config_path)!;
-	NixBackendConfig config = parse_nix_backend_config(allocator, contents)!;
+	UserConfig user = load_user_config(allocator)!;
+	if (!user.has_nix) return NOT_FOUND~;
+	NixBackendConfig config = user.nix;
 	if (!executable_file(config.executable))
 	{
 		io::printfn("Configured Nix executable is unavailable:\n  %s\n\nSelect it again with `c3pm toolchain nix use`.",
@@ -239,17 +214,26 @@ fn int? run_nix_status_command()
 	String config_path = xdg_config_path(tmem)!;
 	if (file::is_file(config_path))
 	{
-		NixBackendConfig? loaded = load_nix_backend_config(tmem);
+		UserConfig? loaded = load_user_config(tmem);
 		if (catch loaded)
 		{
 			io::printfn("Invalid c3pm Nix configuration:\n  %s\n\nSelect a backend again.",
 				config_path);
 			return 1;
 		}
-		NixBackendConfig config = loaded;
-		print_nix_status(config.mode == "portable" ? "portable" : "system",
-			config.executable, config_path);
-		return 0;
+		UserConfig user = loaded;
+		if (user.has_nix)
+		{
+			NixBackendConfig config = user.nix;
+			if (!executable_file(config.executable))
+			{
+				io::printfn("Configured Nix executable is unavailable:\n  %s", config.executable);
+				return 1;
+			}
+			print_nix_status(config.mode == "portable" ? "portable" : "system",
+				config.executable, config_path);
+			return 0;
+		}
 	}
 	if (try executable = find_executable(tmem, "nix"))
 	{
@@ -301,8 +285,9 @@ fn int? use_nix_path(String requested)
 
 fn int? reset_nix_backend()
 {
-	String config_path = xdg_config_path(tmem)!;
-	if (file::is_file(config_path)) (void)file::delete(config_path);
+	UserConfig config = load_user_config(tmem)!;
+	config.has_nix = false;
+	save_user_config(&config)!;
 	io::printn("Cleared the saved Nix backend. Nix will be discovered automatically.");
 	return 0;
 }
@@ -347,17 +332,22 @@ fn PortableNixRunner? select_nix_runner(Allocator allocator)
 	String config_path = xdg_config_path(tmem)!;
 	if (file::is_file(config_path))
 	{
-		NixBackendConfig? loaded = load_nix_backend_config(tmem);
+		UserConfig? loaded = load_user_config(tmem);
 		if (catch loaded)
 		{
 			io::printfn("Invalid c3pm Nix configuration:\n  %s\n\nSelect it again with `c3pm toolchain nix use`.",
 				config_path);
 			return INVALID_NIX_CONFIG~;
 		}
-		NixBackendConfig config = loaded;
-		return config.mode == "portable"
-			? portable_nix_runner(config.executable.copy(allocator))
-			: portable_nix_runner(config.executable.copy(allocator), true, false);
+		UserConfig user = loaded;
+		if (user.has_nix)
+		{
+			NixBackendConfig config = user.nix;
+			if (!executable_file(config.executable)) return INVALID_NIX_CONFIG~;
+			return config.mode == "portable"
+				? portable_nix_runner(config.executable.copy(allocator))
+				: portable_nix_runner(config.executable.copy(allocator), true, false);
+		}
 	}
 	if (try native_nix = find_executable(tmem, "nix"))
 	{

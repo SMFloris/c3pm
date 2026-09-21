@@ -35,6 +35,8 @@ fn int? run_command(String[] args)
 		{
 			return run_toolchain_nix_command(args);
 		}
+		if (args[1] == "registry") return run_registry_command(args);
+		if (args[1] == "search") return run_search_command(args);
 		PortableNixRunner? selected = select_nix_runner(tmem);
 		if (catch selected) return 1;
 		PortableNixRunner portable = selected;
@@ -88,15 +90,20 @@ fn void print_help()
 		"Usage: c3pm <command> [options]\n"
 		"\n"
 		"Commands:\n"
-		"  add SOURCE [options]           Alias for dep add\n"
+		"  add SOURCE|NAMESPACE/NAME [options]  Alias for dep add\n"
 		"  remove NAME [--for-target TARGET]  Alias for dep remove\n"
 		"  list [--for-target TARGET]     List dependencies and links\n"
-		"  dep add SOURCE [options]\n"
+		"  dep add SOURCE|NAMESPACE/NAME [options]\n"
 		"  dep remove NAME [--for-target TARGET]\n"
 		"  dep list [--for-target TARGET]\n"
 		"  link add NAME [options]\n"
 		"  link remove NAME [--for-target TARGET]\n"
 		"  link list [--for-target TARGET]\n"
+		"  registry add NAME SOURCE [options]\n"
+		"  registry remove NAME\n"
+		"  registry update [NAME]\n"
+		"  registry list\n"
+		"  search [QUERY...] [--registry NAME] [--tag TAG]\n"
 		"  toolchain show\n"
 		"  toolchain c3c <set VERSION|reset>\n"
 		"  toolchain nixpkgs <set REF|update|reset>\n"

@@ -79,6 +79,105 @@ fn void nix_backend_config_round_trip_test() @test
 		`{"nix":{"mode":"unknown","path":"/tmp/nix"}}`), INVALID_NIX_CONFIG);
 }
 
+fn void user_config_preserves_nix_and_registries_test() @test
+{
+	PackageSource local = parse_source(tmem, "path:/tmp/local registry", "", "catalog", "")!!;
+	PackageSource github = parse_source(tmem, "github:acme/community", "main", "", "")!!;
+	RegistryConfig[] registries = {
+		{ .name = "local", .source = local },
+		{ .name = "community", .source = github },
+	};
+	UserConfig original = {
+		.has_nix = true,
+		.nix = { .mode = "native", .executable = "/usr/bin/nix" },
+		.registries = registries,
+	};
+	String encoded = encode_user_config(tmem, &original);
+	UserConfig parsed = parse_user_config(tmem, encoded)!!;
+	test::@check(parsed.has_nix);
+	test::eq("/usr/bin/nix", parsed.nix.executable);
+	test::eq(2, parsed.registries.len);
+	test::eq("main", parsed.find_registry("community")!!.source.rev);
+	test::eq("catalog", parsed.find_registry("local")!!.source.subdir);
+
+	remove_registry_config(&parsed, tmem, "community")!!;
+	test::@check(parsed.has_nix);
+	test::eq(1, parsed.registries.len);
+	test::@error(remove_registry_config(&parsed, tmem, "missing"), NOT_FOUND);
+}
+
+fn void registry_schema_is_validated_through_reader_test() @test
+{
+	String[] paths = {
+		"registry.json",
+		"index.json",
+		"packages/vendor/raylib/package.json",
+		"packages/vendor/raylib/5.5.json",
+	};
+	String[] documents = {
+		`{"name":"C3 Vendor","version":1,"generated":"2026-09-21T00:00:00Z"}`,
+		`{"packages":[{"id":"vendor/raylib","name":"raylib","namespace":"vendor","latest":"5.5","description":"Raylib bindings","tags":["graphics"]}]}`,
+		`{"id":"vendor/raylib","name":"raylib","namespace":"vendor","description":"Raylib bindings","homepage":"https://raylib.com","repository":"https://github.com/raysan5/raylib","tags":["graphics"],"versions":["5.5"]}`,
+		`{"name":"raylib","namespace":"vendor","version":"5.5","provides":"raylib","download":{"source":"github","owner":"SMFloris","repository":"c3c-vendor","rev":"main","subdir":"libraries/raylib.c3l"},"toolchain":{"c3c":">=0.8.1 <0.9.0"},"published":"2026-09-21T00:00:00Z"}`,
+	};
+	FakeNixRunner fake = { .paths = paths, .manifests = documents };
+	NixRunner runner = (NixRunner)&fake;
+	PackageSource source = parse_source(tmem, "github:acme/registry", "main", "", "")!!;
+	validate_registry(tmem, source, runner, "/tmp/probe", "registry")!!;
+
+	documents[1] = `{"packages":[{"id":"wrong/id","name":"raylib","namespace":"vendor","latest":"5.5","description":"","tags":[]}]}`;
+	test::@error(validate_registry(tmem, source, runner, "/tmp/probe", "registry"),
+		INVALID_REGISTRY);
+}
+
+fn void registry_search_matches_all_tokens_and_sorts_by_relevance_test() @test
+{
+	String index = `{"packages":[{"id":"vendor/raygui","name":"raygui","namespace":"vendor","latest":"4","description":"Immediate mode GUI","tags":["graphics"]},{"id":"vendor/raylib","name":"raylib","namespace":"vendor","latest":"6","description":"Graphics library","tags":["graphics","game"]}]}`;
+	SearchPackage[] packages = load_search_packages(tmem, "vendor", index)!!;
+	test::eq(2, packages.len);
+	String[] exact = { "raylib" };
+	String[] prefix = { "ray" };
+	String[] multi = { "raylib", "graphics" };
+	test::eq(900, search_score(&packages[1], exact));
+	test::@check(search_score(&packages[0], prefix) > 0);
+	test::@check(search_score(&packages[1], multi) > 0);
+	test::eq(-1, search_score(&packages[0], multi));
+	test::@check(package_has_tag(&packages[1], "GRAPHICS"));
+
+	packages[0].score = search_score(&packages[0], exact);
+	packages[1].score = search_score(&packages[1], exact);
+	SearchPackage[] sorted = sort_search_results(tmem, packages);
+	test::eq("vendor/raylib", sorted[0].id);
+}
+
+fn void default_registry_source_is_canonical_test() @test
+{
+	PackageSource source = default_registry_source(tmem)!!;
+	test::eq(SourceKind.GITHUB, source.kind);
+	test::eq("SMFloris/c3pm-registry", source.location);
+	test::eq("master", source.rev);
+	test::eq("default", DEFAULT_REGISTRY_NAME);
+}
+
+fn void registry_package_reference_resolves_download_source_test() @test
+{
+	test::@check(is_registry_package_id("vendor/raylib"));
+	test::@check(!is_registry_package_id("raylib"));
+	test::@check(!is_registry_package_id("github:owner/repo"));
+	RegistryConfig registry = { .name = "default" };
+	RegisteredPackageSource resolved = parse_registered_release(tmem, registry,
+		"vendor/raylib", "6",
+		`{"name":"raylib","namespace":"vendor","version":"6","provides":"raylib","download":{"source":"github","owner":"SMFloris","repository":"c3c-vendor","rev":"main","subdir":"libraries/raylib.c3l"}}`)!!;
+	test::eq("default", resolved.registry);
+	test::eq("raylib", resolved.provides);
+	test::eq(SourceKind.GITHUB, resolved.source.kind);
+	test::eq("SMFloris/c3c-vendor", resolved.source.location);
+	test::eq("libraries/raylib.c3l", resolved.source.subdir);
+	test::@error(parse_registered_release(tmem, registry, "vendor/raylib", "5.5",
+		`{"name":"raylib","namespace":"vendor","version":"6","provides":"raylib","download":{"source":"github","owner":"a","repository":"b","rev":"main"}}`),
+		INVALID_REGISTRY);
+}
+
 fn void executable_lookup_accepts_path_and_name_test() @test
 {
 	String shell = find_executable(tmem, "/bin/sh")!!;
