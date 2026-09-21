@@ -17,14 +17,14 @@ It reads the standard C3 dependency graph and adds `vendor.c3pm` metadata for so
 
 Released c3pm binaries are standalone static executables. Running c3pm itself does **not** require C3 or a compatible system libc. Nix remains a separate backend: c3pm can use your existing installation or manage `nix-portable` for you.
 
-[![asciicast](https://asciinema.org/a/a0BODrl7BoN9U6xM.svg)](https://asciinema.org/a/a0BODrl7BoN9U6xM)
+[![asciicast](https://asciinema.org/a/U3d5pHHQY7fR1mgZ.svg)](https://asciinema.org/a/U3d5pHHQY7fR1mgZ)
 
 The demo demonstrates how c3pm:
 
-- fetches `sqlite3.c3l` directly from GitHub;
-- switches the C3 compiler version on the fly;
-- opens a development shell with all native dependencies installed—in this case, SQLite;
-- bundles the application and `libsqlite3.so` into one self-contained executable.
+- searches the default package registry;
+- resolves the unique package name `raylib` to `vendor/raylib`;
+- installs its pinned C3 and native dependencies;
+- builds a raylib application inside the reproducible development shell.
 
 ## Quick start
 
@@ -42,7 +42,6 @@ curl --fail --location \
 Create a new C3 project:
 
 ```sh
-cd ~/Projects
 c3c init raylib_hello
 cd raylib_hello
 ```

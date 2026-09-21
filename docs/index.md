@@ -51,9 +51,9 @@ description: Reproducible C3 projects, powered by Nix.
 <section class="home-demo" aria-labelledby="home-demo-title">
   <h2 id="home-demo-title">See c3pm in action</h2>
   <div class="home-demo-player">
-    <script src="https://asciinema.org/a/a0BODrl7BoN9U6xM.js" id="asciicast-a0BODrl7BoN9U6xM" async="true"></script>
+    <script src="https://asciinema.org/a/U3d5pHHQY7fR1mgZ.js" id="asciicast-U3d5pHHQY7fR1mgZ" async="true"></script>
   </div>
-  <p>The demo shows c3pm fetching <code>sqlite3.c3l</code> from GitHub, switching C3 versions, opening a shell with SQLite installed, and producing one self-contained executable containing <code>libsqlite3.so</code>.</p>
+  <p>The demo creates a C3 project, discovers <code>vendor/raylib</code> through the default registry, installs it by the unique name <code>raylib</code>, and builds the application inside its reproducible development shell.</p>
 </section>
 
 <nav class="section-pagination" aria-label="Section navigation">
