@@ -74,39 +74,10 @@ fn String? registry_string(Object* parent, String key)
 fn PackageSource? parse_registry_download(Allocator allocator, Object* download)
 {
 	if (!download.is_map()) return INVALID_REGISTRY~;
-	if (download.has_key("source") || download.has_key("owner") ||
-		download.has_key("repository") || download.has_key("rev") ||
-		download.has_key("subdir")) return INVALID_REGISTRY~;
-	String kind = required_string(download, "type")!;
-	String url = required_string(download, "url")!;
-	String hash = required_string(download, "sha256")!;
-	if (!valid_sha256_sri(hash)) return INVALID_REGISTRY~;
-	String[] fragments = url.tsplit("#");
-	if (fragments.len > 2) return INVALID_REGISTRY~;
-	if (kind == "git")
-	{
-		if (fragments.len != 2) return INVALID_REGISTRY~;
-		if (!fragments[0].starts_with("git+https://") &&
-			!fragments[0].starts_with("git+ssh://")) return INVALID_REGISTRY~;
-		String[] parts = fragments[1].tsplit("/");
-		if (parts.len < 2 || !full_git_commit(parts[0])) return INVALID_REGISTRY~;
-		String subdir = fragments[1][parts[0].len + 1..];
-		if (!subdir.len) return INVALID_REGISTRY~;
-		PackageSource source = parse_source(allocator, fragments[0], parts[0], subdir, hash)!;
-		return source;
-	}
-	else if (kind == "tar.gz" || kind == "zip")
-	{
-		String subdir = fragments.len == 2 ? fragments[1] : "";
-		if (fragments.len == 2 && !subdir.len) return INVALID_REGISTRY~;
-		PackageSource source = parse_source(allocator,
-			string::format(tmem, "archive+%s", fragments[0]), "", subdir, hash)!;
-		source.raw_archive = true;
-		source.archive_type = kind.copy(allocator);
-		source.validate()!;
-		return source;
-	}
-	else { return INVALID_REGISTRY~; }
+	if (download.has_key("type")) return INVALID_REGISTRY~;
+	PackageSource? source = parse_source_object(allocator, download);
+	if (catch source) return INVALID_REGISTRY~;
+	return source;
 }
 
 fn String[]? registry_string_array(Allocator allocator, Object* parent, String key,

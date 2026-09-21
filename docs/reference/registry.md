@@ -78,8 +78,11 @@ Each version needs a matching `<version>.json` file. For example, `packages/vend
   "namespace": "vendor",
   "version": "6",
   "download": {
-    "type": "git",
-    "url": "git+https://github.com/SMFloris/c3c-vendor.git#3ef0f672970b9bb6a9549470470d37ae25ba55c7/libraries/raylib6.c3l",
+    "source": "github",
+    "owner": "SMFloris",
+    "repository": "c3c-vendor",
+    "rev": "3ef0f672970b9bb6a9549470470d37ae25ba55c7",
+    "subdir": "libraries/raylib6.c3l",
     "sha256": "sha256-fQC/D0fplTFGygJKtx6QsP94pBoUjVLNiSBNY2XEwNQ="
   },
   "c3_version": ">=0.8.1 <0.9.0",
@@ -89,21 +92,24 @@ Each version needs a matching `<version>.json` file. For example, `packages/vend
 
 ## Source and compatibility fields
 
-The registry version file does not repeat the C3 library name. When installing or updating, c3pm reads `provides` from the downloaded `.c3l/manifest.json`; it can differ from the registry package name. `download` has `type`, `url`, and `sha256` fields. The hash uses SHA-256 in SRI form (`sha256-` followed by Base64).
+The registry version file does not repeat the C3 library name. When installing or updating, c3pm reads `provides` from the downloaded `.c3l/manifest.json`; it can differ from the registry package name. `download` uses the same [source-object forms]({{ '/docs/reference/metadata/#c3-dependency-sources' | relative_url }}) as direct dependencies: `github`, `git+https`, `git+ssh`, `archive+https`, or `path`.
 
-For `"type": "git"`, use a `git+https://` or `git+ssh://` URL ending in `#COMMIT/SUBDIR`. `COMMIT` is the full 40-character Git commit ID and `SUBDIR` is the relative path to the `.c3l` directory. The hash covers the checked-out source tree in Nix's NAR format, not the Git commit ID. For example, `nix flake prefetch --json 'git+https://example.com/repo.git?rev=COMMIT'` reports that tree hash.
+For Git sources, set `rev` to a commit, tag, or branch and use `subdir` when the `.c3l` directory is not at the source root. A commit is recommended for published releases because a branch or tag can move. An optional `sha256` pins the fetched source tree using its Nix NAR hash; c3pm checks it against the locked input. For example, `nix flake prefetch --json 'git+https://example.com/repo.git?rev=COMMIT'` reports that hash.
 
-For `"type": "tar.gz"` or `"zip"`, use an HTTPS archive URL. Add `#SUBDIR` when the `.c3l` directory is inside the extracted archive. Here, `sha256` covers the **downloaded archive bytes**, before extraction. For example:
+For an HTTPS archive, use `source: "archive+https"`, its `url`, and a `sha256` in SRI form. Add `subdir` when the `.c3l` directory is inside the extracted archive. Set `hashMode: "file"` and `archiveType: "tar.gz"` or `"zip"` when `sha256` covers the **downloaded archive bytes**, before extraction. For example:
 
 ```json
 "download": {
-  "type": "tar.gz",
-  "url": "https://codeload.github.com/SMFloris/c3c-vendor/tar.gz/3ef0f672970b9bb6a9549470470d37ae25ba55c7#libraries/raylib6.c3l",
+  "source": "archive+https",
+  "url": "https://codeload.github.com/SMFloris/c3c-vendor/tar.gz/3ef0f672970b9bb6a9549470470d37ae25ba55c7",
+  "subdir": "libraries/raylib6.c3l",
+  "hashMode": "file",
+  "archiveType": "tar.gz",
   "sha256": "sha256-ugNVXOGUzH63Be4XFi7jaWnvcvZGj3IR1VLbepeONek="
 }
 ```
 
-For an archive, compute the hash with `nix hash file --sri ARCHIVE`. Direct dependencies in `project.json` still use the [source-object forms]({{ '/docs/reference/metadata/#c3-dependency-sources' | relative_url }}); a registry release is translated into a pinned dependency when added. `c3_version` is the declared compiler compatibility range, and `published` is an ISO-8601 timestamp. The current client checks that these two fields are present but does not evaluate the compiler range or timestamp format.
+For an archive using `hashMode: "file"`, compute the hash with `nix hash file --sri ARCHIVE`. Without `hashMode`, `sha256` is the extracted-tree hash. `c3_version` is the declared compiler compatibility range, and `published` is an ISO-8601 timestamp. The current client checks that these two fields are present but does not evaluate the compiler range or timestamp format.
 
 ## Publish and validate
 
