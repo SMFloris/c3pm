@@ -30,9 +30,6 @@ jobs:
           - os: macos-15
             platform: macos-aarch64
             linux: false
-          - os: macos-15-intel
-            platform: macos-x86_64
-            linux: false
     env:
       C3_VERSION: "0.8.4"
       NIXPKGS_REF: github:NixOS/nixpkgs/a32edd7654519351e48e80372a928df336394670
@@ -134,7 +131,7 @@ jobs:
 
       - name: Create source archive and checksums
         run: |
-          for platform in linux-x86_64 linux-aarch64 macos-aarch64 macos-x86_64; do
+          for platform in linux-x86_64 linux-aarch64 macos-aarch64; do
             test -f "release/c3pm-${platform}"
             chmod +x "release/c3pm-${platform}"
           done
@@ -150,7 +147,6 @@ jobs:
             c3pm-linux-x86_64 \
             c3pm-linux-aarch64 \
             c3pm-macos-aarch64 \
-            c3pm-macos-x86_64 \
             install.sh \
             "c3pm-${GITHUB_REF_NAME}-source.zip" \
             > SHA256SUMS
@@ -163,7 +159,6 @@ jobs:
             release/c3pm-linux-x86_64 \
             release/c3pm-linux-aarch64 \
             release/c3pm-macos-aarch64 \
-            release/c3pm-macos-x86_64 \
             release/install.sh \
             "release/c3pm-${GITHUB_REF_NAME}-source.zip" \
             release/SHA256SUMS \

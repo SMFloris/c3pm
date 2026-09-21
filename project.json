@@ -4,7 +4,7 @@
   "dependency-search-paths": [ "lib" ],
   "dependencies": [],
   "authors": [],
-  "version": "0.3.6",
+  "version": "0.3.7",
   "sources": [ "src/**" ],
   "test-sources": [ "test/**" ],
   "build-dir": "build",

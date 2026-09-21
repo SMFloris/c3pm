@@ -65,4 +65,6 @@ sh install.sh --help
 The installer can bootstrap packages through `apt`, `dnf`/`yum`, `pacman`, `zypper`, or `apk`.
 On Arch Linux, prerequisite installation performs a full `pacman -Syu` sync and upgrade to avoid a partial upgrade.
 
+Automated releases do not publish a macOS Intel asset; use the [source-build instructions](https://github.com/SMFloris/c3pm#macos-intel-source-build-only) for that platform.
+
 Release checksums are verified before an existing c3pm binary is replaced.

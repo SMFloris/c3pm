@@ -19,6 +19,8 @@ c3c test
 ./build/c3pm --help
 ```
 
+For release-style build commands on Linux x86_64, Linux ARM64, macOS ARM64, and source-only macOS Intel, see the [platform-specific instructions in the README](https://github.com/SMFloris/c3pm#build-from-source). macOS Intel is supported from source but omitted from the automated CI and release matrix.
+
 Without a saved backend, a source build uses the `nix` command in `PATH`.
 
 Select a persistent backend with `c3pm toolchain nix use`, or override it for one CI command:
@@ -27,6 +29,8 @@ Select a persistent backend with `c3pm toolchain nix use`, or override it for on
 C3PM_NIX=nix ./build/c3pm install
 C3PM_NIX=nix ./build/c3pm bundle
 ```
+
+`bundle` is Linux-only; omit that command on macOS.
 
 To use a specific nix-portable executable instead:
 

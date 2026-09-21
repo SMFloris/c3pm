@@ -5,7 +5,7 @@
 ![Linux x86_64: published](https://img.shields.io/badge/Linux%20x86__64-published-2ea44f)
 ![Linux ARM64: CI target](https://img.shields.io/badge/Linux%20ARM64-CI%20target-orange)
 ![macOS ARM64: CI target](https://img.shields.io/badge/macOS%20ARM64-CI%20target-orange)
-![macOS Intel: CI target](https://img.shields.io/badge/macOS%20Intel-CI%20target-orange)
+![macOS Intel: source build](https://img.shields.io/badge/macOS%20Intel-source%20build-blue)
 
 <p align="center">
   <img src="docs/assets/c3pm-logo.png" alt="c3pm — Package Manager for the C3 Programming Language" width="720">
@@ -16,7 +16,7 @@
 It reads the standard C3 dependency graph and adds `vendor.c3pm` metadata for sources, toolchains, and native packages. c3pm uses those inputs to create a reproducible development and build environment.
 
 > [!WARNING]
-> **Current published release: Linux x86_64.** Native CI and release builds now target Linux ARM64 and macOS ARM64/Intel too; treat them as supported only after their native end-to-end checks pass and a release publishes those binaries. On Windows, use WSL2 rather than native Windows.
+> **Current published release: Linux x86_64.** Native CI and release builds target Linux ARM64 and macOS ARM64 too; treat them as supported only after their native end-to-end checks pass and a release publishes those binaries. macOS Intel is supported through source builds, without a CI job or automated release binary. On Windows, use WSL2 rather than native Windows.
 
 > [!NOTE]
 > **Default nixpkgs target:** nixpkgs-unstable (nixpkgs 26.05 on macOS Intel).
@@ -110,6 +110,64 @@ With the portable Nix backend, the first Nix operation initializes `nix-portable
 ## Examples
 
 The [SQLite todo application](examples/sqlite-example) demonstrates C3 bindings, native dependencies, and a portable bundle. Follow the [walkthrough](https://c3pm.dev/docs/examples/sqlite/).
+
+## Build from source
+
+Build on the machine that will run c3pm. Start by cloning the repository:
+
+```sh
+git clone https://github.com/SMFloris/c3pm.git
+cd c3pm
+```
+
+The commands below use C3 0.8.4. Linux release-style builds also need `musl-gcc` (provided by `musl-tools` on Debian/Ubuntu). Nix is needed for c3pm's project commands; the macOS builds use system Nix.
+
+### Linux x86_64
+
+Install C3 0.8.4 and `musl-gcc`, then build and test the static executable:
+
+```sh
+c3c test
+c3c --linux-libc=musl -z -static --cc musl-gcc -O2 build c3pm
+./build/c3pm --version
+```
+
+### Linux ARM64
+
+Install Nix and `musl-gcc`. The same pinned Nix compiler recipe used by CI provides C3 0.8.4:
+
+```sh
+c3c_path="$(C3_VERSION=0.8.4 NIXPKGS_REF=github:NixOS/nixpkgs/a32edd7654519351e48e80372a928df336394670 sh scripts/ci-install-c3c.sh linux-aarch64)"
+"$c3c_path/bin/c3c" test
+"$c3c_path/bin/c3c" --linux-libc=musl -z -static --cc musl-gcc -O2 build c3pm
+./build/c3pm --version
+```
+
+### macOS ARM64
+
+Install system Nix, then use the pinned C3 0.8.4 build:
+
+```sh
+c3c_path="$(C3_VERSION=0.8.4 NIXPKGS_REF=github:NixOS/nixpkgs/a32edd7654519351e48e80372a928df336394670 sh scripts/ci-install-c3c.sh macos-aarch64)"
+"$c3c_path/bin/c3c" test
+"$c3c_path/bin/c3c" -O2 build c3pm
+./build/c3pm --version
+./build/c3pm toolchain nix use system
+```
+
+### macOS Intel (source build only)
+
+Install system Nix. This builds C3 0.8.4 against the pinned nixpkgs 26.05 revision for Intel Macs, so the first build can take a while. macOS Intel is not run in CI and is not included in automated release assets:
+
+```sh
+c3c_path="$(C3_VERSION=0.8.4 sh scripts/ci-install-c3c.sh macos-x86_64)"
+"$c3c_path/bin/c3c" test
+"$c3c_path/bin/c3c" -O2 build c3pm
+./build/c3pm --version
+./build/c3pm toolchain nix use system
+```
+
+For a development build rather than a static Linux release-style executable, `c3c build` is sufficient. See [Build c3pm from source](https://c3pm.dev/docs/contributing/build-from-source/) for more on testing and previewing the docs.
 
 ## Contributing
 
