@@ -21,6 +21,58 @@ fn bool option_value(String[] args, sz* index, String* destination)
 	return true;
 }
 
+fn String? parse_list_target(String[] args, sz options_start)
+{
+	if (args.len == options_start) return "";
+	if (args.len == options_start + 2 && args[options_start] == "--for-target" &&
+		args[options_start + 1].len) return args[options_start + 1];
+	return INVALID_ARGUMENTS~;
+}
+
+fn void? list_dependencies(Path root, String target)
+{
+	String project_json = (String)file::load(tmem,
+		string::format(tmem, "%s/project.json", (String)root))!;
+	Metadata project = parse_project(tmem, project_json, host_c3_target()!)!;
+	sz target_object;
+	JsonMember target_dependencies;
+	if (target.len)
+	{
+		target_object = project_target_object(project_json, target)!;
+		target_dependencies = find_json_member(project_json, target_object, "dependencies")!;
+	}
+	foreach (&source : project.sources)
+	{
+		if (target.len && (!target_dependencies.found ||
+			!json_array_has_string(project_json, target_dependencies.value_start, source.name))) continue;
+		io::printfn("%s\t%s:%s", source.name, source_kind_name(source.source.kind),
+			source.source.location);
+	}
+}
+
+fn void? list_links(Path root, String target)
+{
+	String json = (String)file::load(tmem,
+		string::format(tmem, "%s/project.json", (String)root))!;
+	Metadata project = parse_project(tmem, json, host_c3_target()!)!;
+	foreach (&link : project.links)
+	{
+		if (target.len && link.for_target != target) continue;
+		io::printfn("%s\t%s\t%s", link.name, link.c3c_target,
+			link.passthrough ? "passthrough" : "runtime");
+	}
+}
+
+fn int? run_list_command(String[] args, Path root)
+{
+	String target = parse_list_target(args, 2)!;
+	io::printn("Dependencies:");
+	list_dependencies(root, target)!;
+	io::printn("\nLinks:");
+	list_links(root, target)!;
+	return 0;
+}
+
 fn SourceOptions? parse_dependency_options(String[] args, sz start)
 {
 	SourceOptions options;
@@ -45,6 +97,8 @@ fn void print_dep_help()
 {
 	io::printn(
 		"Usage:\n"
+		"  c3pm add SOURCE [options]  (alias for c3pm dep add)\n"
+		"  c3pm remove NAME [--for-target TARGET]  (alias for c3pm dep remove)\n"
 		"  c3pm dep add SOURCE [--rev REF] [--sha256 HASH] [--subdir PATH]\n"
 		"                        [--name NAME] [--for-target TARGET]\n"
 		"  c3pm dep remove NAME [--for-target TARGET]\n"
@@ -75,26 +129,8 @@ fn int? run_dep_command(String[] args, Path root, NixRunner runner)
 	}
 	if (args.len >= 3 && args[2] == "list")
 	{
-		String target;
-		if (args.len == 5 && args[3] == "--for-target") { target = args[4]; }
-		else if (args.len != 3) { return INVALID_ARGUMENTS~; }
-		String project_json = (String)file::load(tmem,
-			string::format(tmem, "%s/project.json", (String)root))!;
-		Metadata project = parse_project(tmem, project_json, host_c3_target()!)!;
-		sz target_object;
-		JsonMember target_dependencies;
-		if (target.len)
-		{
-			target_object = project_target_object(project_json, target)!;
-			target_dependencies = find_json_member(project_json, target_object, "dependencies")!;
-		}
-		foreach (&source : project.sources)
-		{
-			if (target.len && (!target_dependencies.found ||
-				!json_array_has_string(project_json, target_dependencies.value_start, source.name))) continue;
-			io::printfn("%s\t%s:%s", source.name, source_kind_name(source.source.kind),
-				source.source.location);
-		}
+		String target = parse_list_target(args, 3)!;
+		list_dependencies(root, target)!;
 		return 0;
 	}
 	print_dep_help();
@@ -222,18 +258,8 @@ fn int? run_link_command(String[] args, Path root, NixRunner runner)
 	}
 	if (args.len >= 3 && args[2] == "list")
 	{
-		String requested;
-		if (args.len == 5 && args[3] == "--for-target") { requested = args[4]; }
-		else if (args.len != 3) { return INVALID_ARGUMENTS~; }
-		String json = (String)file::load(tmem,
-			string::format(tmem, "%s/project.json", (String)root))!;
-		Metadata project = parse_project(tmem, json, host_c3_target()!)!;
-		foreach (&link : project.links)
-		{
-			if (requested.len && link.for_target != requested) continue;
-			io::printfn("%s\t%s\t%s", link.name, link.c3c_target,
-				link.passthrough ? "passthrough" : "runtime");
-		}
+		String target = parse_list_target(args, 3)!;
+		list_links(root, target)!;
 		return 0;
 	}
 	print_link_help();

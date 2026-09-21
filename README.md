@@ -65,6 +65,9 @@ With the portable Nix backend, the first Nix operation initializes `nix-portable
 Run c3pm from the directory containing `project.json` or from any directory below it. c3pm finds the project root automatically.
 
 ```text
+c3pm add SOURCE [options]
+c3pm remove NAME [--for-target TARGET]
+c3pm list [--for-target TARGET]
 c3pm dep <add|remove|list> ...
 c3pm link <add|remove|list> ...
 c3pm toolchain <show|c3c|nixpkgs|nix> ...
@@ -75,6 +78,9 @@ c3pm bundle [TARGET] [--output PATH]
 
 | Command | Purpose |
 | --- | --- |
+| `c3pm add` | Alias for `c3pm dep add`. |
+| `c3pm remove` | Alias for `c3pm dep remove`. |
+| `c3pm list` | List both C3 dependencies and links. |
 | [`c3pm dep`](#c3-dependencies) | Add, list, or remove C3 source dependencies. |
 | [`c3pm link`](#linking-libraries-and-projects) | Manage native packages, Nix definitions, and linked C3 library targets. |
 | [`c3pm toolchain`](#toolchain) | Pin C3 and nixpkgs, and select the user's Nix backend. |
@@ -149,6 +155,10 @@ C3PM_NIX_PORTABLE=/path/to/nix-portable c3pm install
 ```
 
 ## C3 dependencies
+
+`c3pm add SOURCE [options]` and `c3pm remove NAME [--for-target TARGET]` are shorter aliases for `c3pm dep add` and `c3pm dep remove`. They accept the same options as their full forms.
+
+`c3pm list [--for-target TARGET]` prints both dependencies and links in separate sections. The target filter applies to both sections.
 
 ### Add a dependency
 

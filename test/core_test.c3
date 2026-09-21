@@ -11,6 +11,44 @@ struct FakeNixRunner (NixRunner)
 	int locks;
 }
 
+fn void dependency_command_aliases_are_normalized_test() @test
+{
+	String[] normalized = normalize_command_aliases(tmem,
+		{ "c3pm", "add", "github:someone/c3-libs", "--rev", "main", "--name", "sqlite3" });
+	test::eq(8, normalized.len);
+	test::eq("c3pm", normalized[0]);
+	test::eq("dep", normalized[1]);
+	test::eq("add", normalized[2]);
+	test::eq("github:someone/c3-libs", normalized[3]);
+	test::eq("--rev", normalized[4]);
+	test::eq("main", normalized[5]);
+	test::eq("--name", normalized[6]);
+	test::eq("sqlite3", normalized[7]);
+
+	String[] remove = normalize_command_aliases(tmem,
+		{ "c3pm", "remove", "sqlite3", "--for-target", "server" });
+	test::eq(6, remove.len);
+	test::eq("c3pm", remove[0]);
+	test::eq("dep", remove[1]);
+	test::eq("remove", remove[2]);
+	test::eq("sqlite3", remove[3]);
+	test::eq("--for-target", remove[4]);
+	test::eq("server", remove[5]);
+
+	String[] unchanged = { "c3pm", "link", "add", "sqlite3" };
+	test::eq(unchanged, normalize_command_aliases(tmem, unchanged));
+}
+
+fn void combined_list_target_filter_is_parsed_test() @test
+{
+	test::eq("", parse_list_target({ "c3pm", "list" }, 2)!!);
+	test::eq("server", parse_list_target(
+		{ "c3pm", "list", "--for-target", "server" }, 2)!!);
+	test::@error(parse_list_target({ "c3pm", "list", "--unknown" }, 2), INVALID_ARGUMENTS);
+	test::@error(parse_list_target(
+		{ "c3pm", "list", "--for-target" }, 2), INVALID_ARGUMENTS);
+}
+
 fn void nix_runner_supports_portable_and_direct_nix_test() @test
 {
 	PortableNixRunner portable = portable_nix_runner("/tmp/nix-portable");
