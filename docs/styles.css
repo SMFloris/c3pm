@@ -83,6 +83,83 @@ figure.highlight pre {
   margin: 0;
 }
 
+/* Rouge syntax tokens. */
+.highlight .c,
+.highlight .c1,
+.highlight .cm,
+.highlight .cp,
+.highlight .cs {
+  color: #6a737d;
+  font-style: italic;
+}
+
+.highlight .k,
+.highlight .kc,
+.highlight .kd,
+.highlight .kn,
+.highlight .kp,
+.highlight .kr,
+.highlight .kt {
+  color: #8a2be2;
+  font-weight: 600;
+}
+
+.highlight .na,
+.highlight .nb,
+.highlight .nc,
+.highlight .nd,
+.highlight .ne,
+.highlight .nf,
+.highlight .nl,
+.highlight .nn {
+  color: #005cc5;
+}
+
+.highlight .s,
+.highlight .s1,
+.highlight .s2,
+.highlight .sb,
+.highlight .sc,
+.highlight .sd,
+.highlight .se,
+.highlight .sh,
+.highlight .si,
+.highlight .sr,
+.highlight .ss,
+.highlight .sx {
+  color: #087f5b;
+}
+
+.highlight .m,
+.highlight .mb,
+.highlight .mf,
+.highlight .mh,
+.highlight .mi,
+.highlight .mo,
+.highlight .il {
+  color: #b35c00;
+}
+
+.highlight .o,
+.highlight .ow {
+  color: #d73a49;
+}
+
+.highlight .gd {
+  color: #b31d28;
+  background: #ffeef0;
+}
+
+.highlight .gi {
+  color: #176f2c;
+  background: #e6ffed;
+}
+
+.highlight .err {
+  color: #b31d28;
+  background: #ffeef0;
+}
+
 .skip-link {
   position: fixed;
   z-index: 100;
